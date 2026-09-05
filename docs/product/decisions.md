@@ -1,14 +1,19 @@
 # Product Decisions
 
-This file records accepted product-direction decisions that carry architectural consequences but
-are not themselves ADRs — no technology, protocol, or alternative comparison is recorded here.
-Once a decision below matures into a technology/structural choice (e.g. a sync protocol, an
-ownership algorithm, a persistence engine), that choice is recorded separately as an ADR in
-`docs/architecture/adr/`, and this file is updated to reference it.
+This file records product-direction decisions that carry architectural consequences but are not
+themselves ADRs — no technology, protocol, or alternative comparison is recorded here. Entries are
+proposed candidates during architecture inception (status **PROPOSED — FOR TEAM REVIEW**) and
+become Accepted only after the second developer has reviewed the initial architecture baseline and
+any material concerns have been resolved. Once a decision below matures into a technology/
+structural choice (e.g. a sync protocol, an ownership algorithm, a persistence engine), that choice
+is recorded separately as an ADR in `docs/architecture/adr/`, and this file is updated to
+reference it.
 
 ## PD-001: Independent Watch Workout Execution
 
-**Status:** Accepted
+**Status:** PROPOSED — FOR TEAM REVIEW (put forward as a candidate decision; becomes Accepted
+only after the second developer has reviewed the initial architecture baseline and any material
+concerns have been resolved)
 
 **Decision**
 
@@ -70,3 +75,70 @@ previously tracked as undecided in
 previously flagged in architectural risk discussion (active workout ownership, offline workout
 durability, duplicate synchronization) from open product questions to accepted constraints that
 any future sync/ownership ADR must satisfy.
+
+## PD-002: Local-First Workout Execution (Phone and Watch)
+
+**Status:** PROPOSED — FOR TEAM REVIEW (put forward as a candidate decision; becomes Accepted
+only after the second developer has reviewed the initial architecture baseline and any material
+concerns have been resolved)
+
+**Decision**
+
+> Workout execution is local-first and must not depend on network or backend availability,
+> regardless of whether the workout is executed on a phone or a watch.
+
+A workout must be startable, executable, completable, and durably persisted locally without
+internet connectivity, on either device type.
+
+**Scope**
+
+This generalizes [PD-001](#pd-001-independent-watch-workout-execution)'s offline requirement — 
+previously stated for the watch specifically — to the phone's own execution path as well, so both
+devices offer the same offline-durability guarantee for active workout execution. It does **not**
+extend beyond execution: it does not imply the entire application must work offline.
+
+Connectivity requirements for account operations, synchronization itself, remote/shared content,
+analytics, and other future functionality are separate decisions, not settled by this entry.
+
+**Relationship to PD-001**
+
+PD-001's accepted architectural consequences (state must survive disconnection, must not depend on
+backend availability, retries must not create duplicate workouts, synchronization failure must not
+invalidate a completed local workout, etc.) now apply uniformly to phone-executed and
+watch-executed workouts alike, not only to the watch.
+
+## PD-003: Workout Domain Scope — Deferred
+
+**Status:** Deferred — decide when planning the first workout implementation slice. The retained
+constraint below is itself a candidate baseline item (PROPOSED — FOR TEAM REVIEW), not yet accepted.
+
+**What is deferred**
+
+Whether the initial implemented workout domain is strength training (discrete set/rep sessions),
+running/cardio (continuous sensor/time-series sessions), or both, is treated as a product-scope /
+implementation-sequencing decision, not a foundational architecture decision. It is intentionally
+**not** recorded as an accepted decision at this stage.
+
+**Retained architectural constraint**
+
+> The architecture must not assume that all workouts are only discrete set/rep-based sessions, nor
+> that all workouts require continuous sensor/time-series data.
+
+This exists only to prevent a foundational decision made now from obviously foreclosing one domain
+later. It does **not** authorize designing a generalized "universal workout model" now — unifying
+strength and cardio into one abstraction before concrete domain models exist for either is
+premature generalization and is explicitly avoided.
+
+**Distinctions to keep separate**
+
+- *Product/domain capability direction* — long-term, both discrete and continuous-sensor workouts
+  are expected to be supported.
+- *First implemented workout type* — deferred; decided when the first workout implementation slice
+  is planned.
+- *First platform-risk investigation* — may be triggered independently and earlier than the scope
+  decision above, if a proposed architecture starts depending on unverified assumptions (e.g.
+  background GPS behavior, long-running independent watch sessions). Such a trigger is a targeted
+  platform investigation, not a commitment to cardio-as-V1-scope.
+
+**Explicitly not decided by PD-003:** which domain ships first, whether both ship together, and
+the workout data model itself.

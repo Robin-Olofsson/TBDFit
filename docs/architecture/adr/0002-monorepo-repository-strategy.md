@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted
+PROPOSED — FOR TEAM REVIEW
+
+This has been reasoned through and is put forward as a candidate decision. It becomes Accepted
+only after the second developer has reviewed the initial architecture baseline and any material
+concerns have been resolved.
 
 ## Context
 
