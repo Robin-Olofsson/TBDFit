@@ -272,3 +272,21 @@ For non-trivial features, completion should also answer:
 * Does the ADR still describe reality?
 
 When these cannot be answered confidently, report the feature as requiring further architectural work rather than declaring it complete.
+
+## Repository-Specific Implementation Rules
+
+These are concrete, checkable rules for this codebase, not new architectural reasoning. See
+`docs/architecture/adr/` for the decisions they enforce.
+
+### Supabase boundary (ADR-004)
+
+> Supabase SDK/API usage must remain inside the infrastructure/data-access implementation for the
+> relevant capability. UI, application, and domain code must not directly depend on Supabase SDK
+> types, table names, query syntax, or schema-shaped calls.
+
+For the first capability that touches Supabase, use a natural module/package boundary (e.g. a
+single package or module clearly named for that capability's data access) so that a Supabase
+import appearing outside it is easy to spot in review. Do not create a generic backend
+abstraction, a repository interface per entity, or any layer with no current responsibility merely
+to enforce this — the boundary should be exactly as big as the one capability that currently needs
+it.

@@ -8,12 +8,23 @@ of the current scope nor a constraint on it.
 
 ## Status
 
-This repository currently contains only the architectural foundation. No application code exists
-yet. The project is in architecture/product inception: the ADRs and product decisions below are
-**proposed candidates**, reasoned through by one developer, not yet reviewed by the second
-developer. Per the project's review process, they become Accepted only after that baseline review
-has happened and any material concerns have been resolved — at which point implementation begins.
-See `docs/architecture/adr/` and `docs/product/decisions.md` for the proposals and their rationale.
+This repository currently contains the architectural foundation and a minimal, reversible Android
+project scaffold (`android/phone`, `android/wear`) proving the toolchain builds — no workout
+feature or domain model exists yet. The project is in architecture/product inception. Most ADRs and
+product decisions below are **proposed candidates**, reasoned through by one developer, not yet
+reviewed by the second developer, and become Accepted only after that baseline review has happened
+and any material concerns have been resolved. ADR-004 is the one exception so far: it originated
+from the second developer and has been separately discussed and agreed by both, so it is Accepted
+on its own — this does not extend acceptance to any other pending decision. See
+`docs/architecture/adr/` and `docs/product/decisions.md` for the proposals and their rationale.
+
+## Accepted architecture decisions
+
+- [ADR-004: Initial Backend Platform and Migration Strategy](docs/architecture/adr/0004-initial-backend-platform-and-migration-strategy.md)
+  — Supabase is the initial backend platform, reached only through small, purpose-scoped
+  capability boundaries so individual concerns can migrate to a custom backend API later without a
+  full client or backend rewrite. Accepted by both developers; this does not imply acceptance of
+  any other decision below.
 
 ## Proposed architecture decisions (pending team review)
 
@@ -46,7 +57,9 @@ See `docs/architecture/adr/` and `docs/product/decisions.md` for the proposals a
 ```
 /
   apple/     Native iOS + watchOS application (not yet scaffolded)
-  android/   Native Android + Wear OS application (not yet scaffolded)
+  android/   Native Android + Wear OS application
+    phone/   Android phone module (foundation scaffold only; no product features yet)
+    wear/    Wear OS module (foundation scaffold only; no product features yet)
   docs/
     architecture/
       adr/   Architecture Decision Records

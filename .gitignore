@@ -27,7 +27,7 @@ DerivedData/
 .build/
 .swiftpm/
 
-# Gradle / Android (forward-looking; no Gradle project exists yet)
+# Gradle / Android
 .gradle/
 build/
 local.properties
