@@ -107,6 +107,18 @@ backend availability, retries must not create duplicate workouts, synchronizatio
 invalidate a completed local workout, etc.) now apply uniformly to phone-executed and
 watch-executed workouts alike, not only to the watch.
 
+**Verification status**
+
+- **Phone, process-death survival — DEVICE VERIFIED (2026-09-05).** Manually verified on an
+  Android emulator: created local records (via the technical `LocalRecordEntity`/Room slice, not
+  a workout), force-stopped the process (`adb shell am force-stop com.tbdfit.phone`), relaunched
+  from the launcher, and confirmed the same records were still present. This verifies the
+  local-durability mechanism (Room, committed to disk) survives real OS-level process termination
+  on the phone — it does not yet verify this for a workout specifically, since no workout domain
+  model exists yet, and it does not yet cover the watch.
+- **Watch, process-death survival — not yet verified.** No Wear OS persistence implementation
+  exists yet.
+
 ## PD-003: Workout Domain Scope — Deferred
 
 **Status:** Deferred — decide when planning the first workout implementation slice. The retained

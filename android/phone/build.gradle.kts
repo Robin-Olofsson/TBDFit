@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -29,6 +30,20 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                // Sandbox-network workaround: Robolectric's default artifact fetcher hardcodes
+                // repo1.maven.org, which this environment's network policy blocks; the identical
+                // artifacts are reachable via the Apache-hosted Maven Central mirror. Remove this
+                // if building somewhere without that restriction.
+                it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+                it.systemProperty("robolectric.dependency.repo.id", "central")
+            }
+        }
+    }
 }
 
 dependencies {
@@ -39,6 +54,12 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
