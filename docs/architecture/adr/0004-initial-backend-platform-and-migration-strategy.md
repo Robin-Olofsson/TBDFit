@@ -26,7 +26,9 @@ custom backend API immediately would require owning infrastructure, hosting, and
 before any product requirement demands it. At the same time, the team does not want backend
 platform convenience today to become deep, hard-to-remove coupling in the native clients.
 
-## Proposed decision
+## Decision
+
+> Supabase is the initial backend platform, not the permanent application architecture.
 
 > Use Supabase as the initial backend platform, while structuring backend-facing functionality as
 > small, purpose-scoped capabilities so that individual concerns can later migrate to a custom
@@ -120,6 +122,19 @@ infrastructure concerns stay inside the relevant capability's backend implementa
 reasonably possible — without over-engineering the boundary into something more elaborate than the
 current small number of capabilities warrants.
 
+Concretely, for the first capability (Android's `local_records` sync proof), the dependency shape
+is:
+
+```
+LocalRecordSyncCoordinator → LocalRecordRemoteStore → SupabaseLocalRecordRemoteStore
+```
+
+A future migration of this specific capability to a custom API would only mean introducing a
+`CustomApiLocalRecordRemoteStore` behind the same `LocalRecordRemoteStore` interface — Room, the
+UI, and `LocalRecordSyncCoordinator` itself would not change. No additional abstraction is
+introduced now solely to make that future replacement look more generic; the existing narrow
+interface already provides it.
+
 ### Authorization and RLS
 
 Where clients access Supabase directly, Row Level Security (RLS) may provide the server-side
@@ -133,6 +148,23 @@ Client → Custom API → server-side authorization → PostgreSQL
 
 RLS may remain in place as defense-in-depth, but a future custom API must not accidentally depend
 on undocumented RLS behavior as its primary authorization mechanism.
+
+### Schema ownership
+
+The actual schema, RLS policies, and indexes live in `supabase/migrations/` at the repository
+root, not inside any client's source tree. Supabase is shared backend infrastructure for every
+current and future native client (Android, Apple, and any later client), so its schema has a
+platform-neutral home rather than being defined by, or duplicated inside, one client's codebase.
+Client code (e.g. Android's Supabase-backed capability implementations) consumes this shared
+contract; it does not author it. This is an implementation consequence of this ADR's existing
+principles, not a new decision.
+
+`supabase/migrations/` uses that name, not a generic `/db`, deliberately: Supabase is the backend
+actually in use today, and its normal migration convention is the appropriate one to follow. The
+portability this ADR relies on comes from the capability boundaries and standard PostgreSQL
+modeling described above, not from disguising which infrastructure provider is currently in use. If
+a future custom backend ever owns database migrations instead, migration ownership/tooling can
+deliberately move at that time.
 
 ### Authentication
 
@@ -155,6 +187,24 @@ Potentially more coupling-heavy: Supabase Auth, RLS tied strongly to Supabase's 
 Realtime, Edge Functions, Storage, and any schema-shaped direct client access. These are not
 forbidden — adopting them is acceptable when their product value outweighs their migration cost.
 The project is optimizing for pragmatic development, not zero vendor dependency.
+
+Concretely, as of the first real capability (`local_records`, see `supabase/migrations/`): its
+table structure, primary key, foreign key, and indexes are ordinary PostgreSQL. Its RLS policies
+reference `auth.uid()` and its ownership column has a foreign key to `auth.users` — both are
+Supabase-provisioned identity/session/database-role integration, not vanilla Postgres. A complete
+exit from Supabase (not merely moving one capability to a custom API against the same
+Supabase-hosted Postgres) would need to replace `auth.users`, `auth.uid()`, and that
+Supabase-specific auth/role wiring.
+
+This is a narrower claim than "leaving Supabase means authorization moves into application code."
+PostgreSQL itself, and PostgreSQL Row Level Security as a feature, are not inherently
+Supabase-specific — RLS is a standard Postgres capability that predates and doesn't require
+Supabase. A future architecture could still enforce authorization via PostgreSQL RLS while using a
+different mechanism to propagate the authenticated identity into the database (e.g. a self-hosted
+Postgres role/session-variable scheme fed by a custom auth service), rather than necessarily moving
+that authorization entirely into application/API code. Which of those two shapes is used is a
+decision for if and when a complete Supabase exit is ever pursued — not decided here, and not
+expected to be needed for the currently preferred approach.
 
 ## Why currently preferred
 

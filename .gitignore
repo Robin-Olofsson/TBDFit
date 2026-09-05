@@ -1,6 +1,6 @@
 # macOS
 .DS_Store
-
+pws.txt
 # Windows
 Thumbs.db
 desktop.ini
@@ -29,6 +29,7 @@ DerivedData/
 
 # Gradle / Android
 .gradle/
+.kotlin/
 build/
 local.properties
 captures/

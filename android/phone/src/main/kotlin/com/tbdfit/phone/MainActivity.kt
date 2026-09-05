@@ -18,25 +18,32 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.tbdfit.phone.backend.localrecords.SupabaseLocalRecordRemoteStore
 import com.tbdfit.phone.localstorage.AppDatabase
 import com.tbdfit.phone.localstorage.LocalRecordDao
 import com.tbdfit.phone.localstorage.LocalRecordEntity
+import com.tbdfit.phone.sync.LocalRecordSyncCoordinator
 import kotlinx.coroutines.launch
 import java.util.UUID
 
 // Foundation-only entry point; no workout feature exists yet. This screen exists only to prove
-// the local-persistence slice (create -> durable commit -> read back), not as product UI.
+// the local-persistence and local-to-Supabase sync slices, not as product UI.
 class MainActivity : ComponentActivity() {
     private lateinit var database: AppDatabase
+    private lateinit var syncCoordinator: LocalRecordSyncCoordinator
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         database = AppDatabase.build(applicationContext)
+        syncCoordinator = LocalRecordSyncCoordinator(
+            dao = database.localRecordDao(),
+            remoteStore = SupabaseLocalRecordRemoteStore(),
+        )
 
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    LocalRecordsScreen(dao = database.localRecordDao())
+                    LocalRecordsScreen(dao = database.localRecordDao(), syncCoordinator = syncCoordinator)
                 }
             }
         }
@@ -44,12 +51,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun LocalRecordsScreen(dao: LocalRecordDao) {
+private fun LocalRecordsScreen(dao: LocalRecordDao, syncCoordinator: LocalRecordSyncCoordinator) {
     val scope = rememberCoroutineScope()
     val records by dao.getAll().collectAsState(initial = emptyList())
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(text = "TBDFit — phone local persistence proof")
+        Text(text = "TBDFit — phone local persistence + sync proof")
         Button(onClick = {
             scope.launch {
                 dao.insert(
@@ -63,9 +70,13 @@ private fun LocalRecordsScreen(dao: LocalRecordDao) {
         }) {
             Text("Create record")
         }
+        Button(onClick = { scope.launch { syncCoordinator.sync() } }) {
+            Text("Sync now")
+        }
         LazyColumn {
             items(records) { record ->
-                Text("${record.id.take(8)} · ${record.createdAt} · ${record.value}")
+                val status = if (record.syncedAt != null) "synced" else "pending"
+                Text("${record.id.take(8)} · ${record.createdAt} · ${record.value} · $status")
             }
         }
     }

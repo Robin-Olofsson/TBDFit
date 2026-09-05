@@ -60,12 +60,29 @@ on its own — this does not extend acceptance to any other pending decision. Se
   android/   Native Android + Wear OS application
     phone/   Android phone module (foundation scaffold only; no product features yet)
     wear/    Wear OS module (foundation scaffold only; no product features yet)
+  supabase/
+    migrations/   Authoritative, platform-neutral Supabase/PostgreSQL schema, RLS policies, and
+                  indexes (ADR-004). Owned by neither client — Android, Apple, and any future
+                  client consume this same backend contract rather than defining their own copy.
   docs/
     architecture/
       adr/   Architecture Decision Records
     product/
       decisions.md   Proposed product decisions and their architectural consequences
 ```
+
+Supabase is the initial shared backend platform, not the permanent application architecture.
+Database schema ownership is not platform-specific: `supabase/migrations/` is the single source of
+truth for what exists in the shared Supabase project, and Android and future Apple clients consume
+that same backend contract through their own native implementations rather than defining or
+duplicating it. Provider-specific Supabase SDK usage stays inside each client's platform-specific
+infrastructure code (see `CLAUDE.md`'s Supabase boundary rule), and individual backend capabilities
+are intentionally able to migrate to a custom API one at a time. See
+[ADR-004](docs/architecture/adr/0004-initial-backend-platform-and-migration-strategy.md) for the
+rationale and detailed migration rules.
+
+Supabase local setup and live verification:
+[docs/development/supabase-setup-and-verification.md](docs/development/supabase-setup-and-verification.md).
 
 ## Contributing
 

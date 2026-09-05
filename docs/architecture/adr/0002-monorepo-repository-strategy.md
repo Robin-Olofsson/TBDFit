@@ -28,6 +28,8 @@ A single monorepo houses the project:
 /
   apple/
   android/
+  supabase/
+    migrations/
   docs/
     architecture/
       adr/
@@ -35,9 +37,11 @@ A single monorepo houses the project:
   .gitignore
 ```
 
-`backend/` is intentionally **not** created yet. It will be added once a backend technology is
-actually selected — creating an empty placeholder now would imply a decision that has not been
-made.
+`backend/` is intentionally **not** created yet. It will be added once a backend *service*
+technology is actually selected — creating an empty placeholder now would imply a decision that
+has not been made. `supabase/migrations/` is not that placeholder: it holds only the shared
+Supabase/PostgreSQL schema definition (see ADR-004), platform-neutral and consumed by every
+client, not a backend service of its own.
 
 ## Alternatives considered and rejected
 
