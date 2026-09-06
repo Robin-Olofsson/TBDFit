@@ -18,4 +18,10 @@ interface LocalRecordDao {
 
     @Query("UPDATE local_records SET syncedAt = :syncedAt WHERE id = :id")
     suspend fun markSynced(id: String, syncedAt: Long)
+
+    // Used only to clear disposable technical-proof data on logout — see
+    // com.tbdfit.phone.auth.clearAccountScopedTechnicalProofData. Must not be reused for real
+    // workout data, which needs per-owner scoping instead of deletion.
+    @Query("DELETE FROM local_records")
+    suspend fun clearAll()
 }

@@ -143,6 +143,25 @@ class LocalRecordSyncCoordinatorTest {
     }
 
     @Test
+    fun noAuthenticatedSessionLeavesRecordPendingAndDoesNotCrash() = runTest {
+        // Proves the coordinator needs no special-casing for this failure mode: a remote store
+        // that fails because there is no authenticated session (see NoAuthenticatedSessionException
+        // — anonymous auth is retired, so this store must never manufacture one) is handled
+        // exactly like any other remote failure. Never mark synced, never delete, never crash.
+        val record = newRecord()
+        db.localRecordDao().insert(record)
+        val remote = object : LocalRecordRemoteStore {
+            override suspend fun upsert(record: LocalRecordEntity): Result<Unit> =
+                Result.failure(NoAuthenticatedSessionException())
+        }
+
+        LocalRecordSyncCoordinator(db.localRecordDao(), remote).sync()
+
+        val stored = db.localRecordDao().getAll().first().first { it.id == record.id }
+        assertNull(stored.syncedAt)
+    }
+
+    @Test
     fun failedSyncDoesNotDeleteOrLoseTheLocalRecord() = runTest {
         val record = newRecord()
         db.localRecordDao().insert(record)

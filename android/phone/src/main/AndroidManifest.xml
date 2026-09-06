@@ -4,15 +4,47 @@
 
     <application
         android:label="@string/app_name"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@android:style/Theme.Material.NoActionBar">
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Email-confirmation / auth deep link — see SupabaseClientProvider's install(Auth)
+                 host/scheme config and MainActivity's handleDeeplinks calls. singleTask above
+                 avoids stacking a duplicate MainActivity instance when the confirmation link is
+                 tapped from an email app while TBDFit is already running. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="tbdfit"
+                    android:host="auth-callback" />
+            </intent-filter>
         </activity>
+
+        <!-- Receives records replicated from a Wear device (see
+             wearreplication/transport/WearReplicaListenerService.kt). BIND_LISTENER lets Play
+             Services wake this service even if the app isn't running. -->
+        <service
+            android:name=".wearreplication.transport.WearReplicaListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/wear-replica" />
+            </intent-filter>
+            <meta-data
+                android:name="com.google.android.gms.wearable.BIND_LISTENER"
+                android:value="true" />
+        </service>
     </application>
 </manifest>

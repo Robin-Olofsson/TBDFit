@@ -23,5 +23,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Receives Phone's "record durably persisted" acknowledgement, as a DataItem (see
+             replication/transport/PhoneAckListenerService.kt for why DataClient, not
+             MessageClient). BIND_LISTENER lets Play Services wake this service even if the app
+             isn't running. -->
+        <service
+            android:name=".replication.transport.PhoneAckListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/wear-replica-ack" />
+            </intent-filter>
+            <meta-data
+                android:name="com.google.android.gms.wearable.BIND_LISTENER"
+                android:value="true" />
+        </service>
     </application>
 </manifest>

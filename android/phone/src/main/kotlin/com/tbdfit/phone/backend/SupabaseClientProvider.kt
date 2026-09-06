@@ -4,6 +4,7 @@ import android.util.Log
 import com.tbdfit.phone.BuildConfig
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.FlowType
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 
@@ -35,7 +36,20 @@ object SupabaseClientProvider {
             supabaseUrl = BuildConfig.SUPABASE_URL,
             supabaseKey = BuildConfig.SUPABASE_ANON_KEY,
         ) {
-            install(Auth)
+            install(Auth) {
+                // Redirect URL = "tbdfit://auth-callback" — must match the manifest intent-filter
+                // (see AndroidManifest.xml) and be registered in the Supabase Dashboard's Auth URL
+                // configuration. host/scheme are arbitrary identifiers of our own choosing, not
+                // derived from the Supabase project URL (confirmed via official docs).
+                scheme = "tbdfit"
+                host = "auth-callback"
+                // Default is FlowType.IMPLICIT (tokens in a URL fragment), which Supabase's own
+                // docs flag as fragile for email confirmation links specifically: some email
+                // clients/scanners strip URL fragments before the link ever reaches the app. PKCE
+                // sends a `code` query parameter instead, which survives that. MainActivity's
+                // existing handleDeeplinks(intent) call requires no change to support this.
+                flowType = FlowType.PKCE
+            }
             install(Postgrest)
         }
     }

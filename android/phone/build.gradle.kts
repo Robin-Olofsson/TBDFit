@@ -24,7 +24,11 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.tbdfit.phone"
+        // Shared with :wear intentionally — see :wear's build.gradle.kts comment. This is a
+        // product-level identity (both form factors of one app), not phone-specific, even though
+        // this module's own Kotlin namespace (above) remains phone-specific implementation
+        // organization.
+        applicationId = "com.tbdfit.app"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -32,6 +36,12 @@ android {
 
         buildConfigField("String", "SUPABASE_URL", "\"${localProperties.getProperty("SUPABASE_URL", "")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localProperties.getProperty("SUPABASE_ANON_KEY", "")}\"")
+        // The OAuth 2.0 Web application Client ID from Google Cloud Console (NOT the Android
+        // Client ID) — required by Credential Manager's GetGoogleIdOption as the audience Supabase
+        // will validate the resulting ID token against. Client-safe configuration, not a secret —
+        // same tier as the Supabase anon key above — but still kept out of git via local.properties
+        // for environment hygiene. See docs/development/supabase-setup-and-verification.md.
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${localProperties.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"")
     }
 
     buildTypes {
@@ -73,9 +83,15 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    implementation(libs.play.services.wearable)
+    implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.google.id)
 
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.postgrest)

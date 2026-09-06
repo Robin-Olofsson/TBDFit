@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Fallback for R.drawable.tbdfit_main_background — NOT artwork. It exists only so that reference
+  compiles before the real photo is supplied: Android resource resolution requires at least one
+  file with a given name for the R class to generate that field, and Kotlin code referencing
+  R.drawable.tbdfit_main_background would otherwise fail to compile.
+
+  This is a flat fill matching TbdfitTheme's dark background color (see ui/theme/Theme.kt,
+  keep this hex in sync with that file's `background` value) — when drawn full-screen with
+  ContentScale.Crop it is visually indistinguishable from "no image, just the background color."
+
+  Once a real drawable-nodpi/tbdfit_main_background.png is added, Android's resource qualifier
+  resolution automatically prefers it over this unqualified fallback — no code change needed.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="1"
+    android:viewportHeight="1">
+    <path
+        android:pathData="M0,0h1v1h-1z"
+        android:fillColor="#121212" />
+</vector>
