@@ -189,7 +189,11 @@ forbidden — adopting them is acceptable when their product value outweighs the
 The project is optimizing for pragmatic development, not zero vendor dependency.
 
 Concretely, as of the first real capability (`local_records`, see `supabase/migrations/`): its
-table structure, primary key, foreign key, and indexes are ordinary PostgreSQL. Its RLS policies
+table structure, primary key, foreign key, and indexes are ordinary PostgreSQL. Authentication and
+the `profiles` capability (see `supabase/migrations/20260906120000_create_profiles.sql`) follow the
+same boundary pattern — a purpose-scoped gateway per capability, RLS mirroring `local_records`'
+select/insert/update-own/no-delete/no-anon shape — and are the second concrete instance of it, not
+a departure from it. Its RLS policies
 reference `auth.uid()` and its ownership column has a foreign key to `auth.users` — both are
 Supabase-provisioned identity/session/database-role integration, not vanilla Postgres. A complete
 exit from Supabase (not merely moving one capability to a custom API against the same

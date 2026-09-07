@@ -1,10 +1,9 @@
 package com.tbdfit.phone.auth
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.IndicationNodeFactory
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
@@ -12,32 +11,38 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.node.DelegatableNode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -86,39 +91,12 @@ internal const val AWAITING_VERIFICATION_COPY =
 internal const val RESEND_VERIFICATION_COPY =
     "If verification is available for this email, new instructions have been requested."
 
-// TEMPORARY, isolated on purpose: username-based login has no backend yet — that's the next
-// slice's job (persistent profile, uniqueness/normalization rules, secure server-side
-// username->email resolution). This must never be read as final product behavior. It exists only
-// so the "Username or email" field is honest about what it can and can't do yet, without inventing
-// an insecure client-side username lookup or any new Supabase query. Replace this whole function
-// wholesale, not extend it, once real username login exists.
-internal const val USERNAME_LOGIN_NOT_YET_SUPPORTED_MESSAGE =
-    "Username login will be connected in the next account backend slice."
-
-internal sealed interface LoginIdentifierRoute {
-    data class EmailLogin(val email: String) : LoginIdentifierRoute
-    data object InvalidEmail : LoginIdentifierRoute
-    data object UsernameLoginNotYetSupported : LoginIdentifierRoute
-}
-
-// CLASSIFICATION only: is this identifier email-shaped at all? Presence of "@" is the sole signal
-// — deliberately NOT full validity. Classification and validation are different questions: a
-// malformed email-looking value (e.g. "foo@") must still be treated as an attempted email login
-// with a validation error, never silently reclassified as a username just because it fails a
-// stricter check. This was the actual root cause of a reported bug: a real, working email address
-// pasted from auth.users.email was misrouted to the username-deferred message because the old
-// single "looksLikeEmail" function required a literal dot in the domain — over-strict for
-// classification purposes, since Supabase (not this regex) is the authority on what's a valid
-// email (see isValidEmail below, and the phone-authentication report).
-internal fun isEmailShaped(value: String): Boolean = value.trim().contains('@')
-
 // VALIDATION: is this a plausible enough email to actually attempt Supabase authentication with?
 // Deliberately permissive and NOT an RFC-authoritative parser — this only needs to reject
 // obviously-incomplete input like "foo@" locally (exactly one "@", non-empty/non-whitespace local
-// and domain parts) so the user gets a clear local error instead of a pointless network call.
-// Does NOT require a dot in the domain: that requirement is not something Supabase itself demands,
-// and enforcing it here was the actual root cause above. Used both for login routing and to
-// sanity-check the create-account email field, so there is exactly one definition of email
+// and domain parts) so the user gets a clear local error instead of a pointless network call. Does
+// NOT require a dot in the domain: that requirement is not something Supabase itself demands. Used
+// for both the login and create-account email fields, so there is exactly one definition of email
 // validity in this file.
 internal fun isValidEmail(value: String): Boolean {
     val trimmed = value.trim()
@@ -130,20 +108,14 @@ internal fun isValidEmail(value: String): Boolean {
         localPart.none { it.isWhitespace() } && domainPart.none { it.isWhitespace() }
 }
 
-// classify identifier kind -> validate that kind -> perform the corresponding auth flow. Kept as
-// three distinct steps on purpose (see isEmailShaped's doc comment for why collapsing them into
-// one strict check was the bug).
-internal fun routeLoginIdentifier(identifier: String): LoginIdentifierRoute {
-    val trimmed = identifier.trim()
-    return when {
-        !isEmailShaped(trimmed) -> LoginIdentifierRoute.UsernameLoginNotYetSupported
-        isValidEmail(trimmed) -> LoginIdentifierRoute.EmailLogin(trimmed)
-        else -> LoginIdentifierRoute.InvalidEmail
-    }
-}
-
-internal fun loginValidationError(identifier: String, password: String): String? = when {
-    identifier.isBlank() || password.isBlank() -> "Enter your username or email and password."
+// Login identifier is email-only (see the repository truth audit's username-login findings:
+// username login has never existed — no username->auth-identity resolution RPC/endpoint exists,
+// and the database's normalized_username column exists solely for profile-username uniqueness, not
+// login resolution). Mirrors createAccountValidationError's shape exactly, one definition of email
+// validity shared between both forms via isValidEmail above.
+internal fun loginValidationError(email: String, password: String): String? = when {
+    email.isBlank() || password.isBlank() -> "Enter your email and password."
+    !isValidEmail(email) -> "Enter a valid email address."
     else -> null
 }
 
@@ -172,7 +144,7 @@ internal fun requiresEmailVerificationPrompt(stateAfterSignUp: AuthState): Boole
 // remember, never rememberSaveable): must NOT survive process death, and must never be written to
 // Room/DataStore/SavedStateHandle/disk — this matters especially for the password fields.
 private class EmailFormFields {
-    var loginIdentifier by mutableStateOf("")
+    var loginEmail by mutableStateOf("")
     var loginPassword by mutableStateOf("")
     var createUsername by mutableStateOf("")
     var createEmail by mutableStateOf("")
@@ -309,7 +281,7 @@ private fun TbdfitAuthTopBar(
                 onClick = onBack,
                 modifier = Modifier.semantics { contentDescription = "Back to landing" },
             ) {
-                Text("←", style = MaterialTheme.typography.titleLarge)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
             }
         },
         title = { EmailModeSwitcher(mode = mode, onModeChange = onModeChange) },
@@ -321,17 +293,6 @@ private fun TbdfitAuthTopBar(
     )
 }
 
-// A no-op Indication: Tab's default press/click feedback is a ripple filling the whole tab
-// rectangle, which reads as a competing "selection box" alongside the slider indicator underneath
-// — the user asked for only the slider to indicate selection/press. Scoped locally around just
-// the tabs (see EmailModeSwitcher) rather than touched globally, so nothing else in the app loses
-// its ripple feedback.
-private object NoRippleIndication : IndicationNodeFactory {
-    override fun create(interactionSource: InteractionSource): DelegatableNode = object : Modifier.Node() {}
-    override fun hashCode(): Int = System.identityHashCode(this)
-    override fun equals(other: Any?): Boolean = this === other
-}
-
 // A deliberate, polished mode switch rather than a plain text toggle link — TabRow is the small
 // native Compose component for exactly this ("deliberate and polished" switching between two peer
 // destinations), nothing custom-drawn. Explicitly neutral-grey throughout: a default SecondaryTabRow
@@ -341,34 +302,70 @@ private object NoRippleIndication : IndicationNodeFactory {
 @Composable
 private fun EmailModeSwitcher(mode: EmailMode, onModeChange: (EmailMode) -> Unit, modifier: Modifier = Modifier) {
     val selectedIndex = if (mode == EmailMode.LOGIN) 0 else 1
-    CompositionLocalProvider(LocalIndication provides NoRippleIndication) {
-        SecondaryTabRow(
-            selectedTabIndex = selectedIndex,
-            modifier = modifier,
-            containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            indicator = {
-                TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(selectedIndex, matchContentSize = true),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            },
-        ) {
-            Tab(
-                selected = mode == EmailMode.LOGIN,
-                onClick = { onModeChange(EmailMode.LOGIN) },
-                text = { Text("LOG IN") },
-                selectedContentColor = MaterialTheme.colorScheme.onSurface,
-                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    SecondaryTabRow(
+        selectedTabIndex = selectedIndex,
+        modifier = modifier,
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        indicator = {
+            TabRowDefaults.SecondaryIndicator(
+                modifier = Modifier.tabIndicatorOffset(selectedIndex, matchContentSize = true),
+                color = MaterialTheme.colorScheme.onSurface,
             )
-            Tab(
-                selected = mode == EmailMode.CREATE_ACCOUNT,
-                onClick = { onModeChange(EmailMode.CREATE_ACCOUNT) },
-                text = { Text("CREATE ACCOUNT") },
-                selectedContentColor = MaterialTheme.colorScheme.onSurface,
-                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        },
+    ) {
+        NoRippleTab(
+            selected = mode == EmailMode.LOGIN,
+            onClick = { onModeChange(EmailMode.LOGIN) },
+            text = "LOG IN",
+            selectedContentColor = MaterialTheme.colorScheme.onSurface,
+            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        NoRippleTab(
+            selected = mode == EmailMode.CREATE_ACCOUNT,
+            onClick = { onModeChange(EmailMode.CREATE_ACCOUNT) },
+            text = "CREATE ACCOUNT",
+            selectedContentColor = MaterialTheme.colorScheme.onSurface,
+            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+// Material3's own `Tab` (1.4.0) builds its ripple by calling `ripple()` directly rather than
+// reading `LocalIndication`, so a `CompositionLocalProvider(LocalIndication provides ...)` around
+// it cannot suppress that ripple — confirmed by inspecting the resolved material3-1.4.0 bytecode
+// (`TabKt` calls `RippleKt.ripple` inline). This reimplements just enough of `Tab` (same
+// `Role.Tab`/selected semantics, same text-centered layout) on top of `Modifier.selectable`'s
+// explicit-`indication` overload, which does accept `indication = null`, to genuinely remove the
+// press feedback and leave only the slider indicator showing selection.
+@Composable
+private fun NoRippleTab(
+    selected: Boolean,
+    onClick: () -> Unit,
+    text: String,
+    selectedContentColor: Color,
+    unselectedContentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .height(48.dp)
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Tab,
             )
-        }
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = if (selected) selectedContentColor else unselectedContentColor,
+            style = MaterialTheme.typography.labelLarge,
+        )
     }
 }
 
@@ -407,12 +404,12 @@ private fun LoginForm(
         Text("Welcome back", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(
-            value = fields.loginIdentifier,
-            onValueChange = { fields.loginIdentifier = it; errorMessage = null },
-            label = { Text("Username or email") },
+            value = fields.loginEmail,
+            onValueChange = { fields.loginEmail = it; errorMessage = null },
+            label = { Text("Email") },
             singleLine = true,
             enabled = !isBusy,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(12.dp))
@@ -426,7 +423,10 @@ private fun LoginForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             trailingIcon = {
                 TextButton(onClick = { passwordVisible = !passwordVisible }, colors = authTextButtonColors()) {
-                    Text(if (passwordVisible) "Hide" else "Show")
+                    Icon(
+                        if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                    )
                 }
             },
             modifier = Modifier.fillMaxWidth(),
@@ -437,29 +437,16 @@ private fun LoginForm(
             colors = authPrimaryButtonColors(),
             modifier = Modifier.fillMaxWidth().height(52.dp),
             onClick = {
-                val error = loginValidationError(fields.loginIdentifier, fields.loginPassword)
+                val error = loginValidationError(fields.loginEmail, fields.loginPassword)
                 if (error != null) {
                     errorMessage = error
                     return@Button
                 }
                 errorMessage = null
-                when (val route = routeLoginIdentifier(fields.loginIdentifier)) {
-                    is LoginIdentifierRoute.EmailLogin -> {
-                        isBusy = true
-                        scope.launch {
-                            gateway.signIn(route.email, fields.loginPassword).onFailure { errorMessage = it.message }
-                            isBusy = false
-                        }
-                    }
-                    LoginIdentifierRoute.InvalidEmail -> {
-                        // Email-shaped (contains "@") but not enough to attempt — stays on the
-                        // email path with a local validation error, never the username message.
-                        errorMessage = "Enter a valid email address."
-                    }
-                    LoginIdentifierRoute.UsernameLoginNotYetSupported -> {
-                        // No gateway call, no lookup, no network — see the constant's own doc.
-                        errorMessage = USERNAME_LOGIN_NOT_YET_SUPPORTED_MESSAGE
-                    }
+                isBusy = true
+                scope.launch {
+                    gateway.signIn(fields.loginEmail.trim(), fields.loginPassword).onFailure { errorMessage = it.message }
+                    isBusy = false
                 }
             },
         ) {
@@ -533,7 +520,10 @@ private fun CreateAccountForm(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             trailingIcon = {
                 TextButton(onClick = { passwordVisible = !passwordVisible }, colors = authTextButtonColors()) {
-                    Text(if (passwordVisible) "Hide" else "Show")
+                    Icon(
+                        if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                    )
                 }
             },
             modifier = Modifier.fillMaxWidth(),
@@ -600,7 +590,11 @@ private fun TermsAndPrivacyNotice(onTermsClick: () -> Unit, onPrivacyClick: () -
 @Composable
 private fun PlaceholderScreen(title: String, message: String, onBack: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxSize().padding(24.dp)) {
-        TextButton(onClick = onBack, colors = authTextButtonColors()) { Text("← Back") }
+        TextButton(onClick = onBack, colors = authTextButtonColors()) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.height(18.dp).width(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Back")
+        }
         Spacer(Modifier.height(24.dp))
         Text(title, style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(16.dp))

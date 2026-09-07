@@ -237,6 +237,32 @@ secret/service-role keys, or any other bearer credential. UID-only logging is in
 temporary verification aid, not a permanent logging policy — revisit whether it's still needed
 once verification is complete.
 
+## Current verification status — Auth & Profile
+
+Levels used below: **IMPLEMENTED** (code exists) / **AUTOMATED TESTED** (covered by the JVM unit
+test suite) / **LIVE VERIFIED** (exercised against a real Supabase project and the result recorded)
+/ **MANUAL VERIFICATION PENDING** (a runbook procedure exists below but no result is recorded yet)
+/ **DEFERRED** (not built).
+
+- Email/password signup, login, verification-gated sign-in, session restore, logout: IMPLEMENTED,
+  AUTOMATED TESTED. On-device flow (runbook section G) — MANUAL VERIFICATION PENDING.
+- Google native ID-token sign-in code path: IMPLEMENTED, AUTOMATED TESTED. Live Google
+  Cloud/Supabase Dashboard configuration — DEFERRED, so on-device flow (runbook section H) is
+  blocked until that configuration exists, not merely unrun.
+- Anonymous-auth retirement (`NoAuthenticatedSessionException`, no `signInAnonymously()` calls):
+  IMPLEMENTED, AUTOMATED TESTED. On-device retirement check (runbook section F) — MANUAL
+  VERIFICATION PENDING.
+- `profiles` migration (`20260906120000_create_profiles.sql`): IMPLEMENTED (file authored). Applied
+  to a live Supabase project — MANUAL VERIFICATION PENDING.
+- Profile RLS (select/insert/update own, no delete, no anon policy): IMPLEMENTED in the migration.
+  Live proof via real per-user JWTs against the Data API (runbook section I) — MANUAL VERIFICATION
+  PENDING; do not treat SQL Editor testing as a substitute (see section I's own caveat).
+- Username syntax check + case-insensitive uniqueness constraint: IMPLEMENTED in the migration,
+  AUTOMATED TESTED at the Android UX-mirror layer only. Live database-level proof (runbook
+  section J) — MANUAL VERIFICATION PENDING.
+- Username-or-email login backend / custom API: DEFERRED — discussion only, not an accepted
+  decision, no Edge Function or endpoint exists.
+
 ## Verification status
 
 The dated section below predates anonymous auth's retirement (see

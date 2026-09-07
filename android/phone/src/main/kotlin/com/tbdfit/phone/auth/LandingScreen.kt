@@ -12,9 +12,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -109,12 +112,22 @@ fun AuthLandingScreen(
                     .fillMaxWidth()
                     .height(52.dp),
             ) {
-                Text("✉  Continue with Email", style = MaterialTheme.typography.labelLarge)
+                Icon(Icons.Filled.Email, contentDescription = null, modifier = Modifier.height(20.dp).width(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("Continue with Email", style = MaterialTheme.typography.labelLarge)
             }
             Spacer(Modifier.height(8.dp))
         }
     }
 }
+
+// Google sign-in remains fully implemented (GoogleIdTokenProvider, AuthGateway.signInWithGoogle)
+// but its live provider configuration is intentionally unfinished (Google Cloud OAuth client +
+// Supabase Google provider — see the real-device auth readiness audit's "Google must not block
+// email" finding: GOOGLE_WEB_CLIENT_ID is currently blank, so a tap would only reach a generic
+// failure). Forced disabled here rather than removed, so this one flag is the sole thing to flip
+// once that configuration exists — no code path is deleted or reworked.
+private const val GOOGLE_SIGN_IN_AVAILABLE = false
 
 // Google's branding guidelines require the standard "G" logo and an approved call-to-action text
 // ("Continue with Google" is an approved variant) on a light, bordered button.
@@ -138,7 +151,7 @@ internal fun ContinueWithGoogleButton(
 ) {
     Button(
         onClick = onClick,
-        enabled = enabled,
+        enabled = enabled && GOOGLE_SIGN_IN_AVAILABLE,
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = Color.White,
@@ -165,6 +178,9 @@ internal fun ContinueWithGoogleButton(
             )
         }
         Spacer(Modifier.width(12.dp))
-        Text("Continue with Google", style = MaterialTheme.typography.labelLarge)
+        Text(
+            if (GOOGLE_SIGN_IN_AVAILABLE) "Continue with Google" else "Google sign-in — coming later",
+            style = MaterialTheme.typography.labelLarge,
+        )
     }
 }

@@ -8,9 +8,10 @@ of the current scope nor a constraint on it.
 
 ## Status
 
-This repository currently contains the architectural foundation and a minimal, reversible Android
-project scaffold (`android/phone`, `android/wear`) proving the toolchain builds — no workout
-feature or domain model exists yet. The project is in architecture/product inception. Most ADRs and
+This repository currently contains the architectural foundation and an Android implementation
+(`android/phone`, `android/wear`) covering account authentication (email/password and Google
+sign-in), a profile/username capability, and a local-record/Wear-replication persistence proof —
+no workout feature or domain model exists yet. The project is in architecture/product inception. Most ADRs and
 product decisions below are **proposed candidates**, reasoned through by one developer, not yet
 reviewed by the second developer, and become Accepted only after that baseline review has happened
 and any material concerns have been resolved. ADR-004 is the one exception so far: it originated
@@ -69,6 +70,8 @@ on its own — this does not extend acceptance to any other pending decision. Se
       adr/   Architecture Decision Records
     product/
       decisions.md   Proposed product decisions and their architectural consequences
+    development/
+      supabase-setup-and-verification.md   Supabase setup, configuration, and verification runbook
 ```
 
 Supabase is the initial shared backend platform, not the permanent application architecture.
