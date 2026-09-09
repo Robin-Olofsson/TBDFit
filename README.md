@@ -86,7 +86,10 @@ npm run test             # vitest run
 ```
 
 See [`web/README.md`](web/README.md) for environment variables, the Supabase Dashboard redirect-URL
-step required for email confirmation, and the current prototype-content scope.
+step required for email confirmation, and the current prototype-content scope. To let a trusted
+tester use a locally-running session remotely, see
+[Remote Live UX Testing](docs/development/remote-web-testing.md) (Cloudflare Quick Tunnel, no
+router changes).
 
 ### Android Phone / Wear OS
 

@@ -62,6 +62,13 @@ npm run lint      # oxlint
 npm run test      # vitest run
 ```
 
+## Remote live UX testing
+
+Want a trusted friend/family member to click around on their own device while you iterate locally?
+See [`docs/development/remote-web-testing.md`](../docs/development/remote-web-testing.md) — a
+Cloudflare Quick Tunnel workflow, no router changes, no new infrastructure, existing-account sign-in
+only.
+
 ## Screens
 
 `Home` (`/`) · `Routine` library and detail/builder (`/plan`, `/plan/:routineId` — route path
