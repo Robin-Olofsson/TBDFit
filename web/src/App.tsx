@@ -2,6 +2,9 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import PlanPage from './pages/PlanPage'
 import RoutineDetailPage from './pages/RoutineDetailPage'
+import RoutineEditorPage from './pages/RoutineEditorPage'
+import ProgramsListPage from './pages/ProgramsListPage'
+import ProgramBuilderPage from './pages/ProgramBuilderPage'
 import HistoryPage from './pages/HistoryPage'
 import WorkoutDetailPage from './pages/WorkoutDetailPage'
 import ProfilePage from './pages/ProfilePage'
@@ -10,6 +13,7 @@ import TopNav from './components/TopNav'
 import AccountMenu from './components/AccountMenu'
 import { useAuth } from './auth/AuthContext'
 import { useOwnProfile } from './auth/useOwnProfile'
+import { useQueryIdentitySync } from './auth/useQueryIdentitySync'
 import { isAuthenticatedPhase, requiresAuthScreen } from './auth/authPhase'
 
 // Authenticated boundary (real, production-backed — see docs/product/frontend-prototype-notes.md):
@@ -17,8 +21,20 @@ import { isAuthenticatedPhase, requiresAuthScreen } from './auth/authPhase'
 // about the CURRENT private prototype shell only, not a permanent rule that every future TBDFit Web
 // route requires auth — a public athlete profile / published workout / share link is an explicitly
 // open product question (see web-information-architecture.md), unaffected by this gate.
+//
+// Authentication is the ONLY global access gate. Whether a `profiles` row exists is deliberately NOT
+// checked here — a signed-in user with no TBDFit profile yet still gets the full AuthenticatedShell
+// (Home/Plan/Programs all work normally); only /profile itself cares, and decides locally (see
+// ProfilePage.tsx / ProfileSetupForm.tsx). An earlier version of this file added a second,
+// app-wide "profile complete?" gate here that blocked every route until a profile existed — that
+// was a product-behavior mistake (profile creation is an optional, in-app feature, not onboarding)
+// and has been removed; see web/README.md's "Identity model" for the corrected contract.
 export default function App() {
   const { phase } = useAuth()
+  // Runs for the app's entire lifetime, regardless of phase — this is what catches every identity
+  // transition (sign-in, sign-out, a different account signing in) including ones that happen
+  // before AuthenticatedShell ever mounts. See useQueryIdentitySync's own doc comment.
+  useQueryIdentitySync()
 
   if (phase === 'RESTORING_SESSION') {
     return (
@@ -80,8 +96,10 @@ function AuthenticatedShell() {
   const { session, signOut } = useAuth()
   const { username } = useOwnProfile()
   const email = session?.user.email ?? ''
-  // Real identity data only: username if a real `profiles` row exists for this account (same table
-  // Android reads — see useOwnProfile.ts), otherwise the account's email — never invented content.
+  // Real identity data only. `username` is genuinely absent (not just transiently loading) for a
+  // signed-in user who has never visited /profile to create one — that's a normal, expected state
+  // here (see ProfileSetupForm.tsx's own doc comment), not an edge case: this shell must render
+  // correctly whether or not a `profiles` row exists.
   const label = username ?? email
   const initial = (label || '?').charAt(0).toUpperCase()
 
@@ -110,7 +128,11 @@ function AuthenticatedShell() {
               that entry route — see HomePage's own doc comment for why. */}
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/plan" element={<PlanPage />} />
+          <Route path="/plan/new" element={<RoutineEditorPage />} />
           <Route path="/plan/:routineId" element={<RoutineDetailPage />} />
+          <Route path="/plan/:routineId/edit" element={<RoutineEditorPage />} />
+          <Route path="/programs" element={<ProgramsListPage />} />
+          <Route path="/programs/:programId" element={<ProgramBuilderPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/history/:entryId" element={<WorkoutDetailPage />} />
           <Route path="/profile" element={<ProfilePage />} />

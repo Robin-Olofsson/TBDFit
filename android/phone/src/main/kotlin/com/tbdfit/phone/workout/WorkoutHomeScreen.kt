@@ -39,6 +39,11 @@ fun WorkoutHomeScreen(repository: WorkoutRepository, ownerId: String, modifier: 
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text("No active workout", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Quick start, with no routine attached",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Spacer(Modifier.height(24.dp))
         Button(
             enabled = !isStarting,
@@ -56,7 +61,7 @@ fun WorkoutHomeScreen(repository: WorkoutRepository, ownerId: String, modifier: 
                 }
             },
         ) {
-            Text("Start Workout")
+            Text("Start Empty Workout")
         }
         if (isStarting) {
             Spacer(Modifier.height(12.dp))

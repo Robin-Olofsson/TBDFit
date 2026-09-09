@@ -14,6 +14,14 @@ import androidx.room.PrimaryKey
 // `weight`/`reps` are nullable (a bodyweight-only set may have no logged weight) and enforced
 // non-negative at the DAO boundary (see WorkoutSetDao) — Room has no declarative CHECK-constraint
 // mechanism used elsewhere in this codebase, so the DAO is the chosen enforcement layer.
+//
+// `targetReps`/`targetWeight` — Slice A of program-routine-first-slice-design.md's execution target
+// snapshot (hardening pass): copied ONCE, at START, from the source RoutinePlannedSet (see
+// WorkoutRepository.startRoutine), and never re-read from the source afterward. Structurally
+// independent from `reps`/`weight` (the actual performed result) and from `isCompleted`/
+// `completedAt` — a set awaiting execution has a populated target and a null actual, exactly as
+// before this slice, just with a target now visible alongside it. Null for a plain manually-added
+// set (no source plan) — the same nullable columns, no special case.
 @Entity(
     tableName = "workout_sets",
     foreignKeys = [
@@ -34,4 +42,6 @@ data class WorkoutSetEntity(
     val reps: Int? = null,
     val isCompleted: Boolean = false,
     val completedAt: Long? = null,
+    val targetReps: Int? = null,
+    val targetWeight: Double? = null,
 )

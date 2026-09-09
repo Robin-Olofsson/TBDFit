@@ -163,6 +163,261 @@ The Supabase client library constructs each service's specific endpoint (`/rest/
 etc.) itself from the base URL — passing a service path as the base URL breaks every service the
 client talks to, not just the one whose path you happened to paste.
 
+## Web Routine data (first real Supabase product domain table)
+
+`routines` / `routine_exercises` / `routine_planned_sets` / `exercises`
+([`supabase/migrations/20260910120000_create_routines.sql`](../../supabase/migrations/20260910120000_create_routines.sql))
+are the first real, centrally-persisted TBDFit product domain tables — not disposable technical
+proof like `local_records`. They back the Web client's Routine screens only (`web/src/data/routines.ts`)
+as of this migration. **Android's Routine domain (Room) and this Postgres schema are two
+independent, unconnected persistence stores right now — there is no cross-client sync.** See
+`docs/product/frontend-prototype-notes.md`'s "Routine Supabase + Web vertical slice" section for the
+product-level summary, and the migration file's own extensive header comments for the schema
+reasoning (why Postgres-native RLS/ownership semantics were used instead of a mechanical translation
+of the Android Room entities, why `save_routine(...)` is a Postgres function rather than several
+independent browser writes, and the explicit reasoning behind the one deliberate RLS subtlety: a
+foreign key alone does not stop User A from attaching User B's private custom exercise to a routine,
+since FK checks bypass RLS on the referenced table — the `routine_exercises` insert/update policies
+re-check exercise visibility explicitly for exactly this reason).
+
+**Applying this migration to a live project** — no `supabase/config.toml` exists in this repository
+yet (the CLI has never been linked to a project here), so use whichever of these is more convenient:
+
+- **Supabase CLI** (requires `supabase login` once, then a one-time link):
+  ```bash
+  npx supabase login
+  npx supabase link --project-ref <project-ref>
+  npx supabase db push
+  ```
+- **Dashboard SQL Editor** (no CLI setup needed): paste the full contents of
+  `supabase/migrations/20260910120000_create_routines.sql` into **SQL Editor** and run it once.
+
+**Validation already performed for this migration** (see the implementation task's own report for
+full detail): the exact SQL was applied to a disposable local PostgreSQL 16 container (not the real
+project — this sandbox's network policy blocks that, same limitation noted throughout this
+document's other sections) with a minimal `auth.users`/`auth.uid()` shim, and every RLS scenario in
+the migration's own security reasoning was exercised directly as a non-superuser role: cross-account
+SELECT/UPDATE/DELETE isolation, direct `routine_exercises` insertion into another user's routine,
+attaching another user's private custom exercise (both via a raw insert and via `save_routine`), and
+`anon`-role access — all behaved exactly as the policies intend. This is real evidence the SQL is
+correct, not a substitute for also confirming it against the actual live project once applied.
+
+## Web Program data (second real Supabase product domain, optional/additive)
+
+`programs` / `program_weeks` / `program_sessions` / `program_session_exercises` /
+`program_session_planned_sets`
+([`supabase/migrations/20260911120000_create_programs.sql`](../../supabase/migrations/20260911120000_create_programs.sql))
+follow the exact same pattern as the Routine tables above — same RLS/GRANT discipline, same local-
+Postgres validation method — and back the Web client's `Programs`/Program Builder screens
+(`web/src/data/programs.ts`) only. Program is strictly optional: nothing in the Routine tables or
+screens depends on it. See `docs/product/frontend-prototype-notes.md`'s "Program Supabase + Web
+vertical slice" section for the full product-level summary.
+
+Two things worth knowing before touching this schema:
+
+- There is **no foreign key anywhere** from `program_session_exercises`/`program_session_planned_sets`
+  back to `routine_exercises`/`routine_planned_sets` — this is deliberate, not an oversight. Copying
+  a Routine into a Program session (`copy_routine_to_program_session(...)`) reads the routine's
+  current content once and writes independent rows; the schema is structurally incapable of a live
+  reference back to the source Routine, which is exactly what makes "editing the Routine later never
+  changes an existing Program session" a guaranteed fact rather than a convention to remember.
+- Ordering here is deliberately **not** required to be contiguous (unlike the Routine tables, which
+  assume contiguous positions because every save fully replaces a routine's content) — Program's
+  access pattern is incremental (add one week, duplicate one week, delete one session), so positions
+  are sparse and never renumbered on delete, the same discipline Android's `WorkoutExercise`/
+  `WorkoutSet` already use.
+
+**Applying this migration to a live project**: same two options as above —
+`npx supabase db push --dry-run` then `npx supabase db push` once linked, or paste the migration's
+full contents into the Dashboard's SQL Editor.
+
+**Validation already performed**: applied to the same kind of disposable local PostgreSQL 16
+container (with the same `auth.users`/`auth.uid()` shim) as the Routine migration. Verified for
+real, not just reasoned about: the snapshot invariant (copy a Routine into a session, edit/delete
+the original Routine, confirm the session's content is untouched and `source_routine_id` becomes
+`NULL` on delete rather than blocking it), week duplication producing a fully independent copy, and
+the full RLS adversarial suite — cross-account SELECT/UPDATE/DELETE isolation on every table,
+direct-insert and RPC-invocation attempts to attach another account's private custom exercise or to
+mutate another account's program/week/session, and `anon`-role denial — all behaved exactly as the
+policies intend.
+
+## Shared username + display name (profiles.display_name)
+
+[`supabase/migrations/20260912120000_add_profile_display_name.sql`](../../supabase/migrations/20260912120000_add_profile_display_name.sql)
+adds `display_name` to `public.profiles`. `username` is **untouched** by this migration — it stays
+exactly as `20260906120000_create_profiles.sql` defined it: required, syntax-checked, uniquely
+normalized. This is a **shared, cross-client product decision** (Android/Web/Wear/future Apple all
+use the same account model), not a Web-specific change — see `web/README.md`'s "Identity model" for
+the full rationale, including why the schema is deliberately kept ready for a future
+username-based login (a unique, unambiguous mapping to exactly one `auth.users` row) that is
+explicitly **not implemented** here.
+
+This migration was never applied to any live project, so it was revised in place rather than
+superseded by a new migration file — a deliberate, one-time exception to this repo's normal
+migration-immutability rule (its original, unapplied version assumed a Display-Name-only Web signup
+with a nullable `username`, a design superseded before ever reaching production).
+
+`display_name` is **required** (NOT NULL). A profile row is either valid and complete (both
+`username` and `display_name` set) or does not exist at all — there is no "profile with a missing
+display_name" onboarding state, and no client is allowed to insert one field without the other.
+
+**Account creation and TBDFit profile creation are two separate lifecycle steps** for every client
+(see `web/README.md`'s "Identity model" for the full rationale — this is a shared, cross-client
+decision, not Web-specific):
+
+- **Android**: `ProfileCompletionScreen` collects a username after `SignedIn`; `createOwnProfile`
+  (`SupabaseProfileGateway.kt`) inserts `{username, display_name: username}` in one call —
+  `display_name` defaults to `username` since Android's onboarding UI only asks for one field, but
+  this is an application-level default, not a database invariant.
+- **Web**: `signUp()` (`AuthContext.tsx`) collects only email + password — no username, no display
+  name, nothing transported through `auth.users.raw_user_meta_data`. **Authentication is the only
+  thing that gates access to the authenticated app** — `App.tsx` checks auth phase only; a signed-in
+  user with no `profiles` row gets `/`, `/plan`, `/programs`, etc. exactly as normal. Profile
+  existence is a concern local to `/profile` alone: `web/src/pages/ProfilePage.tsx` reads
+  `web/src/auth/profileState.ts`'s `LOADING`/`MISSING`/`COMPLETE`/`UNAVAILABLE` (derived from the
+  `profiles` query) and decides locally whether to render `ProfileSetupForm.tsx` inline or the normal
+  profile view — nothing outside `/profile` reads this state. ProfileSetupForm collects both Username
+  and Display Name explicitly (Display Name mirrors Username until manually edited) and calls
+  `profileCreation.ts`'s `createOwnProfile(username, displayName)`, an explicit `INSERT` triggered by
+  pressing Save, using the browser's own authenticated session (no service-role key, no `SECURITY
+  DEFINER` function, no auth metadata transport). A `profiles_normalized_username_key` violation
+  (username claimed by a different account) is caught there and surfaced as a recoverable inline form
+  error — the form stays open, both fields keep their values, the user retries with a different
+  username. An earlier version of this app used `profileState.ts` as a second, app-wide access gate
+  in `App.tsx` (`MISSING` blocked the entire authenticated shell behind a full-screen
+  `ProfileSetupForm`) — that was a product-behavior mistake (it made an optional feature mandatory
+  onboarding) and has been removed; the description above is the corrected, current behavior.
+
+An earlier Web design collected the username at signup time, transported it through
+`auth.users.raw_user_meta_data` (`options.data.desired_username`), and auto-inserted the profile row
+via `useProfileBootstrap.ts` the first time `SIGNED_IN` fired. That design has been **removed**: it
+conflated Supabase Auth account creation with TBDFit profile creation, and — because the conflict
+could only surface asynchronously after email confirmation, with no form left open — made a
+signup-time username race an unrecoverable dead-end reachable only by "contact support." The current
+design makes that conflict an ordinary, synchronous, recoverable form validation instead.
+
+**Applying this migration to a live project**: same two options as above — `npx supabase db push
+--dry-run` then `npx supabase db push` once linked, or paste the migration's full contents into the
+Dashboard's SQL Editor. **Not applied to any live project by this change** — no Dashboard/CLI-linked
+access from this environment.
+
+**Validation already performed**: applied to the same kind of disposable local PostgreSQL 16
+container (with the same `auth.users`/`auth.uid()` shim) as the Routine/Program migrations, on top
+of all prior migrations applied in order, including the later `rls_auto_enable` adoption. Verified
+for real, against the exact insert shapes both clients now actually use: an explicit
+`{username, display_name}` insert (Web's `ProfileSetupForm`/`profileCreation.ts` shape, and Android's
+now-corrected `NewProfileRow` shape — see "Android impact" below) succeeds and defaults `user_id` to
+`auth.uid()`; a second account can neither `SELECT` nor `UPDATE` the first account's row; `anon` gets
+`permission denied` on both `SELECT` and `INSERT` (table-grant level, not just RLS); and a
+case-varied duplicate username (`Robin_92` vs. an existing `robin_92`) fails with `23505` on
+`profiles_normalized_username_key` specifically — the exact signal `profileCreation.ts` detects to
+produce the recoverable "Username is already taken" error. Blank/whitespace and 81-character
+`display_name` values were verified rejected, and exactly 80 characters accepted, during this
+migration's original authoring; not repeated in this pass since the constraints themselves were not
+touched.
+
+**Android impact**: `SupabaseProfileGateway.kt`'s `NewProfileRow` previously sent only `username`.
+Once `display_name` became `NOT NULL` with no `DEFAULT`, that insert would fail outright
+(`null value in column "display_name" violates not-null constraint`) — confirmed locally before
+fixing it. `NewProfileRow` now also sends `display_name = username`, matching the same
+default-equals-username convention Web's ProfileSetupForm mirrors before the user edits it.
+Android's `ProfileCompletionScreen` UI, `ProfileState` semantics, and non-null `username` contract
+are otherwise unchanged.
+
+## Database source-of-truth principle
+
+**The version-controlled migrations in `supabase/migrations/` are the sole authoritative
+definition of the TBDFit database.** A developer must be able to clone this repository, provision a
+fresh compatible Postgres/Supabase database, apply every migration in order, and get the intended
+TBDFit database behavior — tables, columns, constraints, indexes, RLS enablement, RLS policies,
+functions, RPCs, triggers, event triggers, and grants/revokes — without knowing about, or needing,
+any SQL executed manually in the Supabase Dashboard's SQL Editor. The Dashboard SQL Editor may be
+used for inspection, debugging, and temporary diagnostics; if it changes intended persistent
+database behavior, that change must be captured in a migration or it does not count as shipped.
+
+**Resolved** (see "Security Advisor: rls_auto_enable hardening" below): `public.rls_auto_enable()`
+and the `ensure_rls` event trigger existed on the live project only, created directly against it
+outside this migration history. The developer captured the live definitions via the Dashboard SQL
+Editor (`pg_get_functiondef`, `pg_event_trigger` metadata, ownership, and grants) and
+[`supabase/migrations/20260913120000_adopt_rls_auto_enable.sql`](../../supabase/migrations/20260913120000_adopt_rls_auto_enable.sql)
+now creates both objects from that exact captured definition, so a fresh database built from this
+repo's migrations alone converges to the same state as the live project — see below for the
+convergence proof.
+
+## Security Advisor: rls_auto_enable hardening
+
+Supabase Security Advisor flagged `public.rls_auto_enable()` — `SECURITY DEFINER`, returns
+`event_trigger`, `search_path` pinned to `pg_catalog` — because `PUBLIC` (and therefore `anon`,
+`authenticated`, `service_role`, which inherit every `PUBLIC` grant) held `EXECUTE` on it, the
+default Postgres grants on function creation.
+
+**Live definition captured** via the Dashboard SQL Editor (this sandbox cannot reach the live
+project directly — confirmed by request: `curl https://ufydtwkcddznxpfxoecz.supabase.co/rest/v1/` →
+`403 Blocked by network policy`). The developer ran `pg_get_functiondef`, the `pg_event_trigger`
+metadata query, the ownership query, and the grants query, and provided the exact output. Read from
+the real body (not inferred from the name): on `CREATE TABLE` / `CREATE TABLE AS` / `SELECT INTO`
+producing a table or partitioned table in the `public` schema, it force-enables row level security
+on it (`alter table if exists <table> enable row level security`, with the failure path logged via
+`RAISE LOG` rather than aborting the triggering DDL). Tables in any other schema are explicitly
+skipped. Owner: `postgres`. Event trigger: `ensure_rls`, on `ddl_command_end`, tags `CREATE TABLE` /
+`CREATE TABLE AS` / `SELECT INTO`, enabled (`O`). Pre-hardening grants: `PUBLIC`/`postgres`/`anon`/
+`authenticated`/`service_role` all `EXECUTE`.
+
+[`supabase/migrations/20260913120000_adopt_rls_auto_enable.sql`](../../supabase/migrations/20260913120000_adopt_rls_auto_enable.sql)
+(revised in place — never applied to the live project, so no already-applied migration was rewritten)
+`CREATE OR REPLACE FUNCTION`s `rls_auto_enable()` with that exact captured body,
+`DROP EVENT TRIGGER IF EXISTS` + `CREATE EVENT TRIGGER` to deterministically (re)establish
+`ensure_rls` with the exact captured event/tag list/function (event triggers have no `CREATE OR
+REPLACE`/`ALTER` form for changing those, so drop+create is the only deterministic option — safe
+here because the definition being recreated is identical to what's already live), then
+unconditionally revokes `EXECUTE` from `PUBLIC`/`anon`/`authenticated`/`service_role`. Unlike the
+prior guarded-REVOKE-only version of this same file, the revokes are no longer existence-gated: this
+migration now creates the function itself, so it's guaranteed to exist by that point in the chain on
+every database. `postgres` needs no explicit grant — it's the function's owner, and owner privilege
+is implicit and untouched by `REVOKE`.
+
+**Not a live, directly exploitable path today** (verified locally, not assumed): Postgres refuses to
+invoke any function whose return type is `event_trigger` via ordinary SQL/RPC regardless of
+`EXECUTE` grants — calling it directly fails with "trigger functions can only be called as
+triggers", a type-level restriction, not a permission one. Revoking `EXECUTE` is still the correct
+hardening step Supabase's advisory recommends (least privilege), and it turns that failure into an
+explicit permission-denied error for any still-unauthorized caller.
+
+**Validation performed** against disposable local PostgreSQL 16 containers (same method as every
+other migration in this document), in two configurations, to prove convergence:
+
+1. **Fresh database**: all 8 migrations applied in order from zero (neither `rls_auto_enable()` nor
+   `ensure_rls` pre-existing). Confirmed after: function definition present with `md5(pg_get_functiondef(...))`
+   matching the captured live definition exactly; `security_definer = true`; `search_path =
+   pg_catalog`; `ensure_rls` exists, `evtenabled = 'O'`, tags and target function match exactly;
+   grants reduced to `postgres` only; `has_function_privilege` returns `true` for `postgres` and
+   `false` for `anon`/`authenticated`/`service_role`.
+2. **Live-drift simulation**: a separate database was seeded with the exact captured live
+   definition *and* the exact captured (broad) pre-hardening grants — i.e. what the real project
+   looks like today — then the same 8 migrations were applied on top. Result: **identical** to the
+   fresh-database outcome on every measure above, including a byte-for-byte identical
+   `md5(pg_get_functiondef(...))` — proving `CREATE OR REPLACE` + drop/recreate + revoke converges a
+   database that already has the historical drift to the exact same final state as a database that
+   never did.
+3. **Event trigger functional test against the real captured body** (not the old synthetic
+   stand-in): a plain `CREATE TABLE` in `public` → `relrowsecurity = true`; a `CREATE TABLE AS` in
+   `public` → `relrowsecurity = true` (proving the second declared tag actually works, not just the
+   first); a table created in a non-`public` schema → `relrowsecurity = false` (proving the body's
+   explicit schema restriction is real, not assumed).
+4. **Negative security tests**: direct calls to `public.rls_auto_enable()` as `anon`, `authenticated`,
+   and `service_role` (`set role ...; select public.rls_auto_enable();`) all fail with `permission
+   denied for function rls_auto_enable`, matching the `has_function_privilege` results above.
+5. **Full migration chain unaffected**: `profiles.username`/`display_name` NOT NULL, and RLS enabled
+   on `profiles`/`routines`/`programs`, all verified unchanged after adopting this migration — this
+   change only affects tables created *after* it runs in the chain; every existing TBDFit table
+   already enables RLS explicitly in its own migration.
+
+Both local containers were torn down after verification. **Not applied to any live project by this
+change** — the developer will review and push separately.
+
+The separate "Leaked Password Protection Disabled" Security Advisor finding is intentionally
+deferred — it requires a Supabase plan tier this project is not currently on.
+
 ## Anonymous authentication — retired
 
 **Current application: anonymous auth is no longer used or required.** Anonymous Supabase
@@ -262,6 +517,24 @@ test suite) / **LIVE VERIFIED** (exercised against a real Supabase project and t
   section J) — MANUAL VERIFICATION PENDING.
 - Username-or-email login backend / custom API: DEFERRED — discussion only, not an accepted
   decision, no Edge Function or endpoint exists.
+- Shared username + display name model (`20260912120000_add_profile_display_name.sql`): username
+  required/unique, display_name required and independently editable — IMPLEMENTED, LIVE VERIFIED
+  against a disposable local Postgres instance (constraints, RLS, concurrency-conflict cases). Web
+  profile CREATION is now a separate, explicit, optional, in-app step
+  (`profileState.ts`/`profileCreation.ts`/`ProfileSetupForm.tsx`), owned entirely by `/profile`
+  (`ProfilePage.tsx`) — not collected at signup, not auto-inserted on `SIGNED_IN`, and not gated at
+  the application level: `App.tsx` grants full app access on authentication alone, regardless of
+  profile existence (an earlier `useProfileBootstrap.ts` design that transported a username through
+  auth metadata, and a later `App.tsx`-level profile gate, have both been removed — see "Shared
+  username + display name" above). Android's `Profile`/`ProfileFlow`/
+  `SupabaseProfileGateway` non-nullable-username contract is preserved; `NewProfileRow` now also
+  sends `display_name` (see "Android impact" above — a required, not optional, fix once
+  `display_name` became NOT NULL). AUTOMATED TESTED (Web: `usernameValidation.ts`,
+  `displayNameValidation.ts`, `profileState.ts`'s `deriveProfileState`, plus
+  `npm run test`/`npm run build` passing; Android: `ProfileFlowTest`, `UsernameValidationTest`, a
+  full `:phone:testDebugUnitTest` run). Username-based login itself is explicitly DEFERRED — not
+  implemented, by design. Applied to a live Supabase project — MANUAL VERIFICATION PENDING (not done
+  by this change).
 
 ## Verification status
 
@@ -433,11 +706,14 @@ A_TOKEN=$(curl -s -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
   -d '{"email":"<user-a-email>","password":"<user-a-password>"}' | jq -r '.access_token')
 
 # A inserts their own profile — also doubles as the "generated column" check (D.4 below): the
-# response body's normalized_username must read back lowercase.
+# response body's normalized_username must read back lowercase. display_name is required (NOT
+# NULL) alongside username — an insert with username only now fails with a not-null violation, not
+# an RLS error, so it must be included here even though this section is about RLS, not the
+# display_name contract itself (see "Shared username + display name" above).
 curl -s -X POST "$SUPABASE_URL/rest/v1/profiles" \
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $A_TOKEN" \
   -H "Content-Type: application/json" -H "Prefer: return=representation" \
-  -d '{"username":"Testusera"}'
+  -d '{"username":"Testusera","display_name":"Testusera"}'
 # Expect: 201, one row, user_id = A's own auth uid, normalized_username = "testusera".
 
 A_USER_ID="<paste A's user_id from the response above — not a secret, just an id>"
@@ -501,5 +777,8 @@ confirm each of `ab` (too short), a 31-character string (too long), `röbin` (no
 would have allowed through, proving the database is the actual authority.
 
 **Existing user, no prior profile:** confirm a user who already has a Supabase Auth session but no
-`profiles` row reaches `ProfileState.Missing` in the app and can successfully complete profile
-creation — no manual data migration or fabricated username required.
+`profiles` row can successfully complete profile creation with no manual data migration or
+fabricated username required — on Android, this means reaching `ProfileState.Missing`'s blocking
+`ProfileCompletionScreen`; on Web, it means visiting `/profile` and seeing `ProfileSetupForm` there
+(the rest of the Web app remains fully usable in the meantime — see "Shared username + display
+name" above for why these two clients' UX deliberately differ here).

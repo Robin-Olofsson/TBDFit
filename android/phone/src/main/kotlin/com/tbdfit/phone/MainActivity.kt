@@ -86,6 +86,10 @@ class MainActivity : ComponentActivity() {
             workoutSetDao = database.workoutSetDao(),
             exerciseDao = database.exerciseDao(),
             localAccountDao = database.localAccountDao(),
+            routineDao = database.routineDao(),
+            routineExerciseDao = database.routineExerciseDao(),
+            routinePlannedSetDao = database.routinePlannedSetDao(),
+            appDatabase = database,
         )
         authGateway = SupabaseAuthGateway()
         profileGateway = SupabaseProfileGateway()

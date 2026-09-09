@@ -127,9 +127,12 @@ change.
 
 ### Supabase
 
-`supabase/migrations/` is the single source of truth for the shared schema (currently: disposable
-technical-proof records, and a `profiles` table). Apply migrations via the Supabase SQL editor — see
-the setup runbook linked above for the full procedure, RLS policy verification, and required
+`supabase/migrations/` is the single source of truth for the shared schema — currently: disposable
+technical-proof records, a `profiles` table, and the real Routine/Program domain (`routines`,
+`programs`, and their child tables, each with RLS). Apply migrations either via the Supabase CLI
+(`npx supabase login && npx supabase link --project-ref <project-ref> && npx supabase db push`,
+optionally with `--dry-run` first) or by pasting a migration file into the Dashboard's SQL editor —
+see the setup runbook linked above for the full procedure, RLS policy verification, and required
 Dashboard configuration (email confirmation, redirect URLs).
 
 ## Authentication

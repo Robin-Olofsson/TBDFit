@@ -12,6 +12,12 @@ const NAV_ITEMS: NavItem[] = [
   // Label is "Routine" (per direct human UX feedback) — the route itself stays /plan, an internal
   // implementation detail; see PlanPage.tsx/RoutineDetailPage.tsx for the matching visible rename.
   { to: '/plan', label: 'Routine', end: false },
+  // Programs is its own sibling nav item, deliberately NOT nested under /plan — Option C from
+  // docs/product/web-routine-program-planning-research.md's Routine Information Architecture
+  // section: zero change to the already-shipped, real Routine nav item/routes, and Program can
+  // never read as a requirement for, or parent of, Routine if they are simply two sibling
+  // destinations from the moment Program exists.
+  { to: '/programs', label: 'Programs', end: false },
   { to: '/history', label: 'History', end: false },
 ]
 

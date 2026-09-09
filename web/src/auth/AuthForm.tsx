@@ -59,9 +59,14 @@ function SignInOrUpForm() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (submitting) return // guards against double-submit (e.g. a fast repeated Enter/click)
+
     setSubmitting(true)
     setError(null)
-    const result = isSignIn ? await signIn(email, password) : await signUp(email, password)
+    // Account creation is Email + Password only — no username/display name field here. TBDFit
+    // profile data is collected separately, after SIGNED_IN, by ProfileSetupForm (see
+    // profileState.ts): account creation and profile creation are deliberately separate lifecycle
+    // steps (see web/README.md's "Identity model").
+    const result = isSignIn ? await signIn(email, password) : await signUp({ email, password })
     setSubmitting(false)
     if (!result.ok) setError(result.message ?? 'Something went wrong. Please try again.')
   }
@@ -73,12 +78,12 @@ function SignInOrUpForm() {
 
   return (
     <>
-      <p className="login-eyebrow">Welcome back</p>
+      <p className="login-eyebrow">{isSignIn ? 'Welcome back' : 'Welcome to the club'}</p>
       <h1 className="login-heading">{isSignIn ? 'Log In' : 'Create your account'}</h1>
       <p className="login-subtitle">
         {isSignIn
           ? 'Track your progress. Build better habits. Be a stronger you.'
-          : 'One TBDFit account works everywhere — the same identity as Android.'}
+          : ''}
       </p>
       <form className="login-form" onSubmit={handleSubmit} noValidate>
         <label className="auth-label" htmlFor="auth-email">

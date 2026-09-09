@@ -29,7 +29,10 @@ private const val UNIQUE_VIOLATION_CODE = "23505"
 // consumer of that shared backend contract, not its source of truth.
 
 // Read shape: user_id is present because the row already exists (server-assigned via
-// `default auth.uid()` at insert time — never sent by this client).
+// `default auth.uid()` at insert time — never sent by this client). username is NOT NULL at the
+// database level (see supabase/migrations/20260906120000_create_profiles.sql) — every client's
+// bootstrap step supplies a real username, so deserializing it as non-null here matches the actual
+// schema contract.
 @Serializable
 private data class ProfileRow(
     @SerialName("user_id") val userId: String,
@@ -39,8 +42,17 @@ private data class ProfileRow(
 // Insert shape: user_id deliberately absent — same reasoning as LocalRecordRemoteDto. The column
 // defaults to auth.uid() and RLS enforces it, so the client cannot claim another user's row merely
 // by naming a user_id, because it never sends one.
+//
+// display_name is NOT NULL at the database level (see
+// supabase/migrations/20260912120000_add_profile_display_name.sql) with no DEFAULT — an insert that
+// omits it fails outright, so this must always be sent. Android's ProfileCompletionScreen only ever
+// collects a username (unchanged by this task — see profile/ProfileScreens.kt), so createOwnProfile
+// below initializes display_name to the same value, matching this schema's own documented
+// default-equals-username convention (the same one Web's ProfileSetupForm's Display Name field
+// mirrors before the user edits it). display_name remains independently editable later; nothing
+// about it being equal at creation time is a database invariant.
 @Serializable
-private data class NewProfileRow(val username: String)
+private data class NewProfileRow(val username: String, @SerialName("display_name") val displayName: String)
 
 // The only place in the app that knows Supabase exists for this capability (ADR-004 boundary).
 class SupabaseProfileGateway(
@@ -78,7 +90,7 @@ class SupabaseProfileGateway(
     override suspend fun createOwnProfile(username: String): Result<Profile> = runCatching {
         try {
             val created = client.postgrest[TABLE_NAME]
-                .insert(NewProfileRow(username = username)) { select() }
+                .insert(NewProfileRow(username = username, displayName = username)) { select() }
                 .decodeSingle<ProfileRow>()
             Profile(userId = created.userId, username = created.username)
         } catch (e: PostgrestRestException) {

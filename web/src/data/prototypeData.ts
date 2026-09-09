@@ -1,50 +1,13 @@
-import type { HistoryEntry, Routine } from '../types'
+import type { HistoryEntry } from '../types'
 
 // PROTOTYPE-ONLY sample data — see docs/product/frontend-prototype-notes.md. Not persisted, not
-// fetched from any backend. Reset on every reload. Chosen to mirror the Phone prototype's sample
-// content conceptually (same exercise names, same routine names) so a reviewer comparing both
-// clients side by side sees the same product, not two unrelated demos.
-
-export const PROTOTYPE_ROUTINES: Routine[] = [
-  {
-    id: 'proto-routine-push',
-    name: 'Push Day',
-    exercises: [
-      { id: 'ex-bench-press', name: 'Bench Press', plannedSets: 4, plannedReps: 8 },
-      { id: 'ex-overhead-press', name: 'Overhead Press', plannedSets: 3, plannedReps: 10 },
-    ],
-  },
-  {
-    id: 'proto-routine-pull',
-    name: 'Pull Day',
-    exercises: [
-      { id: 'ex-deadlift', name: 'Deadlift', plannedSets: 3, plannedReps: 5 },
-      { id: 'ex-barbell-row', name: 'Barbell Row', plannedSets: 4, plannedReps: 8 },
-      { id: 'ex-pull-up', name: 'Pull-Up', plannedSets: 3, plannedReps: 6 },
-    ],
-  },
-  {
-    id: 'proto-routine-legs',
-    name: 'Leg Day',
-    exercises: [{ id: 'ex-back-squat', name: 'Back Squat', plannedSets: 5, plannedReps: 5 }],
-  },
-]
-
-// Representative exercise search results for the Routine Builder's "add exercise" flow — a small,
-// fixed list standing in for a real exercise-library query (no Exercise backend on web; see
-// product-information-architecture.md's Exercise Identity direction, not re-litigated here).
-export const PROTOTYPE_EXERCISE_LIBRARY: string[] = [
-  'Bench Press',
-  'Back Squat',
-  'Deadlift',
-  'Overhead Press',
-  'Barbell Row',
-  'Pull-Up',
-  'Incline Bench Press',
-  'Romanian Deadlift',
-  'Front Squat',
-  'Lat Pulldown',
-]
+// fetched from any backend. Reset on every reload.
+//
+// Routine/RoutineExercise sample data used to live here. As of the Supabase Routine vertical
+// slice (supabase/migrations/20260910120000_create_routines.sql, src/data/routines.ts), Routines
+// are REAL, per-account, Supabase-backed data — there is no hardcoded sample-routine fixture any
+// more, on purpose (see PlanPage.tsx's real empty state for a brand-new account instead of a fake
+// seeded list). History/Progress below remain prototype-only; that backend does not exist yet.
 
 export const PROTOTYPE_HISTORY: HistoryEntry[] = [
   {

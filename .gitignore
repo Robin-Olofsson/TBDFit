@@ -43,3 +43,10 @@ captures/
 # Local design-reference assets (e.g. approved-mockup screenshots used while implementing a UI) —
 # these inform code changes but are not themselves a repository asset worth tracking long-term.
 frontpage login.png
+
+# Supabase CLI local cache/link state — supabase/.temp/pooler-url is a Postgres connection string
+# with embedded credentials (found untracked and unprotected during the Program vertical-slice
+# task; never commit it). supabase/.branches/ is the CLI's equivalent for database branching.
+# Migrations themselves (supabase/migrations/) are NOT covered by this and must stay tracked.
+supabase/.temp/
+supabase/.branches/

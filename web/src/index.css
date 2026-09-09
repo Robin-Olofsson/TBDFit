@@ -304,6 +304,17 @@ body {
   cursor: pointer;
 }
 
+/* A larger icon+label variant of .btn-primary for a page's single primary "create" action (e.g.
+   "New Routine", "New Program") — see web/README.md's Icons section. Icons inherit currentColor
+   (white, from .btn-primary) rather than hardcoding a fill/stroke color. */
+.btn-primary-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  font-size: 15px;
+}
+
 .btn-secondary {
   background: transparent;
   border: 1px solid var(--color-border);
@@ -325,8 +336,80 @@ body {
   display: inline-block;
 }
 
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+}
+
 .btn-link-danger {
   color: var(--color-danger);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+
+.modal-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 420px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.7);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  border-radius: 4px;
+}
+
+.modal-close:hover {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.modal-field-input {
+  width: 100%;
+  margin-top: 4px;
 }
 
 .page-actions {
@@ -360,6 +443,186 @@ body {
 
 .exercise-picker-item:hover {
   border-color: var(--color-accent);
+}
+
+/* Routine editor: toolbar (back / title / save) + two-column body (exercise list left, persistent
+   Library panel right) — see newroutinepage.png (a Hevy reference screenshot) for the layout this
+   is modeled after; adapted, not copied 1:1 (no exercise images/equipment-muscle filters — see
+   ExerciseLibraryPanel.tsx's own comment for why). */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.editor-toolbar .btn-back {
+  margin-bottom: 0;
+}
+
+.editor-toolbar-title {
+  flex: 1;
+  margin: 0;
+  font-size: 22px;
+}
+
+.editor-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.editor-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.editor-library-pane {
+  flex: 0 0 320px;
+  position: sticky;
+  top: 24px;
+}
+
+.exercise-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.exercise-empty-state-title {
+  color: var(--color-text);
+  font-weight: 600;
+  margin: 0;
+}
+
+.exercise-library {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - 120px);
+}
+
+.exercise-library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.exercise-library-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.exercise-library-custom-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 0;
+  font-size: 13px;
+}
+
+.exercise-library-create {
+  margin-top: 0;
+}
+
+.exercise-library-search {
+  position: relative;
+}
+
+.exercise-library-search .table-input {
+  width: 100%;
+  padding-left: 34px;
+}
+
+.exercise-library-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.exercise-library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.exercise-library-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--color-text);
+  padding: 8px;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.exercise-library-item:hover {
+  background: var(--color-surface-raised);
+}
+
+.exercise-library-filters {
+  display: flex;
+  gap: 8px;
+}
+
+.exercise-library-filters .table-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.exercise-library-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.exercise-library-item-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.exercise-library-item-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: white;
+  flex-shrink: 0;
+}
+
+@media (max-width: 860px) {
+  .editor-body {
+    flex-direction: column;
+  }
+
+  .editor-library-pane {
+    flex-basis: auto;
+    width: 100%;
+    position: static;
+  }
 }
 
 .stat-row {
@@ -1194,6 +1457,225 @@ body {
     align-items: flex-start;
     gap: 8px;
     padding: 16px 20px;
+  }
+}
+
+/* Real Routine vertical slice (Supabase-backed) — small additions reusing the existing tokens
+   above, not a second design system. */
+
+.form-error {
+  color: var(--color-danger);
+  font-size: 14px;
+  margin: 8px 0 16px;
+}
+
+.empty-state {
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  padding: 32px 24px;
+  text-align: center;
+  margin-top: 16px;
+}
+
+.empty-state .btn-primary {
+  margin-top: 12px;
+}
+
+.field-label {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.routine-name-input {
+  width: 100%;
+  max-width: 360px;
+  padding: 8px 10px;
+  font-size: 15px;
+  margin-bottom: 24px;
+}
+
+.routine-detail-exercise,
+.routine-editor-exercise {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.routine-detail-exercise-name {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+.routine-editor-exercise-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.routine-editor-exercise-header h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.routine-detail-set-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.routine-detail-set-list li {
+  display: flex;
+  gap: 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.routine-detail-set-list li:last-child {
+  border-bottom: none;
+}
+
+.routine-detail-set-index {
+  color: var(--color-text);
+  min-width: 56px;
+}
+
+.exercise-picker-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.exercise-picker-create .table-input {
+  flex: 1;
+  width: auto;
+}
+
+/* Real Program vertical slice (Supabase-backed) — three-pane builder (Weeks | Sessions | Editor),
+   per docs/product/web-routine-program-planning-research.md's recommended layout. Reuses the same
+   tokens/card language as everything above, not a second design system. */
+
+.program-builder {
+  display: grid;
+  grid-template-columns: 200px 260px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.program-builder-weeks,
+.program-builder-sessions,
+.program-builder-editor {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.program-builder-editor {
+  min-height: 240px;
+}
+
+.program-builder-pane-header {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+}
+
+.program-builder-pane-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.program-week-list,
+.program-session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.program-week-item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.program-week-item:hover {
+  background: var(--color-surface-raised);
+}
+
+.program-week-item-active {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  font-weight: 600;
+}
+
+.program-week-item-count {
+  color: var(--color-text-muted);
+  font-weight: 400;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.program-session-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.program-session-item {
+  flex: 1;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.program-session-item:hover {
+  background: var(--color-surface-raised);
+}
+
+.program-session-item-active {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  font-weight: 600;
+}
+
+@media (max-width: 1000px) {
+  .program-builder {
+    grid-template-columns: 1fr;
   }
 }
 

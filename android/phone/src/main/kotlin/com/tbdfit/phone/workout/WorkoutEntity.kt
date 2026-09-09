@@ -38,6 +38,16 @@ enum class WorkoutStatus { ACTIVE, COMPLETED }
 // a guessed real account, so they become correctly and permanently invisible to every owner-scoped
 // query (NULL never equals a real ownerId string) rather than silently reassigned. What should
 // happen to any such orphaned rows remains an open product decision, not resolved here.
+//
+// `originRoutineId` — Slice A of program-routine-first-slice-design.md: informational/traceability
+// provenance only, populated when this Workout was started directly from a Routine (see
+// WorkoutRepository.startRoutine). ON DELETE SET NULL, deliberately weaker than `ownerId`'s
+// RESTRICT: deleting the source Routine must never be blocked by, or destroy, a Workout that came
+// from it — only the "started from" breadcrumb disappears. Never read back to reconstruct this
+// Workout's own content (WorkoutExercise/WorkoutSet rows are fully populated at START and never
+// re-derived from the Routine afterward) — see the design doc's Provenance section for why this
+// column carries different (weaker) delete semantics than the not-yet-implemented Program
+// provenance will.
 @Entity(
     tableName = "workouts",
     foreignKeys = [
@@ -47,8 +57,14 @@ enum class WorkoutStatus { ACTIVE, COMPLETED }
             childColumns = ["ownerId"],
             onDelete = ForeignKey.RESTRICT,
         ),
+        ForeignKey(
+            entity = RoutineEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["originRoutineId"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
     ],
-    indices = [Index("ownerId")],
+    indices = [Index("ownerId"), Index("originRoutineId")],
 )
 data class WorkoutEntity(
     @PrimaryKey val id: String,
@@ -58,4 +74,5 @@ data class WorkoutEntity(
     val completedAt: Long? = null,
     val lastModifiedAt: Long? = null,
     val createdAt: Long,
+    val originRoutineId: String? = null,
 )

@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -33,7 +34,7 @@ class WorkoutRepositoryTest {
         context = ApplicationProvider.getApplicationContext()
         dbName = "test-${UUID.randomUUID()}.db"
         db = AppDatabase.build(context, dbName)
-        repository = WorkoutRepository(db.workoutDao(), db.workoutExerciseDao(), db.workoutSetDao(), db.exerciseDao(), db.localAccountDao())
+        repository = WorkoutRepository(db.workoutDao(), db.workoutExerciseDao(), db.workoutSetDao(), db.exerciseDao(), db.localAccountDao(), db.routineDao(), db.routineExerciseDao(), db.routinePlannedSetDao(), db)
     }
 
     @After
@@ -181,5 +182,222 @@ class WorkoutRepositoryTest {
         // ...but it IS visible to the account that actually owns it.
         val visibleToB = repository.observeAllExercises("owner-b").first()
         assertTrue(visibleToB.any { it.id == ownerBExercise.id })
+    }
+
+    // --- Slice A: Routine → Workout (program-routine-first-slice-design.md) ---------------------
+
+    private suspend fun createBenchPressRoutine(owner: String = ownerId, plannedReps: Int? = 8, plannedWeight: Double? = 80.0): RoutineEntity {
+        val routine = repository.createRoutine(owner, "Push Day")
+        val routineExercise = repository.addExerciseToRoutine(routine.id, repository.createCustomExercise(owner, "Bench Press").id)
+        repository.addPlannedSetToRoutineExercise(routineExercise.id, plannedReps, plannedWeight)
+        repository.addPlannedSetToRoutineExercise(routineExercise.id, plannedReps, plannedWeight)
+        repository.addPlannedSetToRoutineExercise(routineExercise.id, plannedReps, plannedWeight)
+        return routine
+    }
+
+    @Test
+    fun aRoutineCanBeUsedWithZeroProgramInvolvement() = runTest {
+        val routine = createBenchPressRoutine()
+
+        val result = repository.startRoutine(ownerId, routine.id)
+
+        assertTrue(result is StartWorkoutResult.Started)
+        val workout = (result as StartWorkoutResult.Started).workout
+        assertEquals(routine.id, workout.originRoutineId)
+        val attached = repository.observeAttachedExercises(workout.id).first()
+        assertEquals(listOf("Bench Press"), attached.map { it.name })
+        assertEquals(3, repository.observeSetsForWorkoutExercise(attached.single().workoutExerciseId).first().size)
+    }
+
+    // The single most important test in this slice: an in-progress edit to the source Routine must
+    // never retroactively change an already-started Workout's target snapshot.
+    @Test
+    fun editingTheRoutineAfterStartDoesNotChangeTheActiveWorkoutsTargetSnapshot() = runTest {
+        val routine = createBenchPressRoutine(plannedReps = 8, plannedWeight = 80.0)
+        val started = repository.startRoutine(ownerId, routine.id) as StartWorkoutResult.Started
+        val workoutExerciseId = repository.observeAttachedExercises(started.workout.id).first().single().workoutExerciseId
+        val setsAtStart = repository.observeSetsForWorkoutExercise(workoutExerciseId).first()
+        assertEquals(3, setsAtStart.size)
+        assertTrue(setsAtStart.all { it.targetReps == 8 && it.targetWeight == 80.0 })
+
+        // Edit the Routine's planned sets to a completely different prescription after the Workout
+        // already exists.
+        val routineExercise = db.routineExerciseDao().getForRoutine(routine.id).single()
+        for (plannedSet in db.routinePlannedSetDao().getForRoutineExercise(routineExercise.id)) {
+            db.routinePlannedSetDao().updatePlannedReps(plannedSet.id, 5)
+            db.routinePlannedSetDao().updatePlannedWeight(plannedSet.id, 90.0)
+        }
+
+        val setsAfterEdit = repository.observeSetsForWorkoutExercise(workoutExerciseId).first()
+        assertEquals(listOf(8, 8, 8), setsAfterEdit.map { it.targetReps })
+        assertEquals(listOf(80.0, 80.0, 80.0), setsAfterEdit.map { it.targetWeight })
+    }
+
+    @Test
+    fun targetAndActualRemainIndependentThroughACompletedSet() = runTest {
+        val routine = createBenchPressRoutine(plannedReps = 8, plannedWeight = 80.0)
+        val started = repository.startRoutine(ownerId, routine.id) as StartWorkoutResult.Started
+        val workoutExerciseId = repository.observeAttachedExercises(started.workout.id).first().single().workoutExerciseId
+        val set = repository.observeSetsForWorkoutExercise(workoutExerciseId).first().first()
+
+        // Before performing: target is populated, actual is unperformed.
+        assertEquals(8, set.targetReps)
+        assertEquals(80.0, set.targetWeight)
+        assertNull(set.reps)
+        assertNull(set.weight)
+        assertTrue(!set.isCompleted)
+        assertNull(set.completedAt)
+
+        // Perform with DIFFERENT actual values than target.
+        repository.updateSetReps(set.id, 7)
+        repository.updateSetWeight(set.id, 82.5)
+        repository.completeSet(set.id)
+
+        val completed = repository.observeSetsForWorkoutExercise(workoutExerciseId).first().first()
+        assertEquals(8, completed.targetReps)
+        assertEquals(80.0, completed.targetWeight)
+        assertEquals(7, completed.reps)
+        assertEquals(82.5, completed.weight)
+        assertTrue(completed.isCompleted)
+    }
+
+    @Test
+    fun aManuallyAddedSetHasNoTarget() = runTest {
+        val workout = (repository.startWorkout(ownerId) as StartWorkoutResult.Started).workout
+        val exercise = repository.createCustomExercise(ownerId, "Overhead Press")
+        val workoutExercise = repository.addExercise(workout.id, exercise.id)
+
+        val set = repository.addSet(workoutExercise.id, weight = 40.0, reps = 10)
+
+        assertNull(set.targetReps)
+        assertNull(set.targetWeight)
+        assertEquals(40.0, set.weight)
+        assertEquals(10, set.reps)
+    }
+
+    @Test
+    fun deletingTheRoutineAfterCompletionLeavesTheWorkoutIntactWithProvenanceCleared() = runTest {
+        val routine = createBenchPressRoutine()
+        val started = repository.startRoutine(ownerId, routine.id) as StartWorkoutResult.Started
+        repository.completeWorkout(started.workout.id)
+
+        repository.deleteRoutine(routine.id, ownerId)
+
+        val history = repository.observeCompletedWorkouts().first()
+        val survivingWorkout = history.single { it.id == started.workout.id }
+        assertEquals(null, survivingWorkout.originRoutineId)
+        assertTrue(survivingWorkout.status == WorkoutStatus.COMPLETED)
+    }
+
+    @Test
+    fun aDifferentOwnerCannotStartAnotherOwnersRoutine() = runTest {
+        val routine = createBenchPressRoutine(owner = "owner-a")
+
+        val result = runCatching { repository.startRoutine("owner-b", routine.id) }
+
+        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun aDifferentOwnerCannotDeleteAnotherOwnersRoutine() = runTest {
+        val routine = createBenchPressRoutine(owner = "owner-a")
+
+        val deleted = repository.deleteRoutine(routine.id, "owner-b")
+
+        assertTrue(!deleted)
+        assertTrue(repository.observeRoutinesFor("owner-a").first().any { it.id == routine.id })
+    }
+
+    @Test
+    fun startingARoutineWhileAWorkoutIsAlreadyActiveLeavesTheExistingWorkoutUntouched() = runTest {
+        val existing = (repository.startWorkout(ownerId) as StartWorkoutResult.Started).workout
+        val routine = createBenchPressRoutine()
+
+        val result = repository.startRoutine(ownerId, routine.id)
+
+        assertTrue(result is StartWorkoutResult.AlreadyActive)
+        assertEquals(existing.id, (result as StartWorkoutResult.AlreadyActive).existing.id)
+        // No exercises were attached to the existing workout as a side effect.
+        assertEquals(emptyList<AttachedExercise>(), repository.observeAttachedExercises(existing.id).first())
+    }
+
+    // --- Routine UX completion slice: the new repository-level edit wrappers ---------------------
+
+    @Test
+    fun updatingAPlannedSetsRepsAndWeightThroughTheRepositoryPersists() = runTest {
+        val routine = repository.createRoutine(ownerId, "Push Day")
+        val routineExercise = repository.addExerciseToRoutine(routine.id, repository.createCustomExercise(ownerId, "Bench Press").id)
+        val plannedSet = repository.addPlannedSetToRoutineExercise(routineExercise.id, plannedReps = 8, plannedWeight = 80.0)
+
+        repository.updatePlannedSetReps(plannedSet.id, 5)
+        repository.updatePlannedSetWeight(plannedSet.id, 90.0)
+
+        val updated = repository.observePlannedSets(routineExercise.id).first().single()
+        assertEquals(5, updated.plannedReps)
+        assertEquals(90.0, updated.plannedWeight)
+    }
+
+    @Test
+    fun removingAPlannedSetThroughTheRepositoryDeletesOnlyThatSet() = runTest {
+        val routine = repository.createRoutine(ownerId, "Push Day")
+        val routineExercise = repository.addExerciseToRoutine(routine.id, repository.createCustomExercise(ownerId, "Bench Press").id)
+        val first = repository.addPlannedSetToRoutineExercise(routineExercise.id, plannedReps = 8, plannedWeight = 80.0)
+        val second = repository.addPlannedSetToRoutineExercise(routineExercise.id, plannedReps = 8, plannedWeight = 80.0)
+
+        repository.removePlannedSet(first.id)
+
+        assertEquals(listOf(second), repository.observePlannedSets(routineExercise.id).first())
+    }
+
+    @Test
+    fun removingAnExerciseFromARoutineThroughTheRepositoryCascadesItsPlannedSets() = runTest {
+        val routine = repository.createRoutine(ownerId, "Push Day")
+        val benchExercise = repository.addExerciseToRoutine(routine.id, repository.createCustomExercise(ownerId, "Bench Press").id)
+        val squatExercise = repository.addExerciseToRoutine(routine.id, repository.createCustomExercise(ownerId, "Squat").id)
+        repository.addPlannedSetToRoutineExercise(benchExercise.id, plannedReps = 8, plannedWeight = 80.0)
+
+        repository.removeExerciseFromRoutine(benchExercise.id)
+
+        val remaining = repository.observeRoutineExercises(routine.id).first()
+        assertEquals(listOf(squatExercise.id), remaining.map { it.routineExerciseId })
+        assertEquals(emptyList<RoutinePlannedSetEntity>(), repository.observePlannedSets(benchExercise.id).first())
+    }
+
+    // Mirrors editingTheRoutineAfterStartDoesNotChangeTheActiveWorkoutsTargetSnapshot above, but
+    // exercises the actual repository-level edit methods the new Edit Routine UI calls (not raw
+    // DAO access) — proving the UI's own edit path cannot retroactively mutate an already-started
+    // Workout's frozen target snapshot either.
+    @Test
+    fun editingAPlannedSetThroughTheRepositoryAfterStartDoesNotChangeTheActiveWorkoutsTargetSnapshot() = runTest {
+        val routine = createBenchPressRoutine(plannedReps = 8, plannedWeight = 80.0)
+        val started = repository.startRoutine(ownerId, routine.id) as StartWorkoutResult.Started
+        val workoutExerciseId = repository.observeAttachedExercises(started.workout.id).first().single().workoutExerciseId
+
+        val routineExercise = repository.observeRoutineExercises(routine.id).first().single()
+        for (plannedSet in repository.observePlannedSets(routineExercise.routineExerciseId).first()) {
+            repository.updatePlannedSetReps(plannedSet.id, 5)
+            repository.updatePlannedSetWeight(plannedSet.id, 90.0)
+        }
+
+        val setsAfterEdit = repository.observeSetsForWorkoutExercise(workoutExerciseId).first()
+        assertEquals(listOf(8, 8, 8), setsAfterEdit.map { it.targetReps })
+        assertEquals(listOf(80.0, 80.0, 80.0), setsAfterEdit.map { it.targetWeight })
+    }
+
+    // Removing an exercise from the Routine (e.g. via Edit Routine) after a Workout has already
+    // been started from it must not touch that Workout's already-copied WorkoutExercise/WorkoutSet
+    // rows — there is no live reference for the removal to follow.
+    @Test
+    fun removingARoutineExerciseAfterStartDoesNotAffectTheActiveWorkout() = runTest {
+        val routine = createBenchPressRoutine()
+        val started = repository.startRoutine(ownerId, routine.id) as StartWorkoutResult.Started
+        val attachedBefore = repository.observeAttachedExercises(started.workout.id).first()
+        assertEquals(1, attachedBefore.size)
+
+        val routineExercise = repository.observeRoutineExercises(routine.id).first().single()
+        repository.removeExerciseFromRoutine(routineExercise.routineExerciseId)
+
+        val attachedAfter = repository.observeAttachedExercises(started.workout.id).first()
+        assertEquals(attachedBefore.map { it.workoutExerciseId }, attachedAfter.map { it.workoutExerciseId })
     }
 }

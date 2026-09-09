@@ -100,4 +100,27 @@ interface WorkoutSetDao {
         require(reps == null || reps >= 0) { "reps must not be negative" }
         setRepsRaw(id, reps)
     }
+
+    // Slice A execution target snapshot (program-routine-first-slice-design.md): creates an
+    // unperformed WorkoutSet carrying a frozen target — reps/weight/isCompleted/completedAt all
+    // stay at their ordinary unperformed defaults, exactly like appendSet above. The ONLY difference
+    // from appendSet is that targetReps/targetWeight are populated here — this is the actual
+    // mechanism of "START creates an execution snapshot": once this row exists, nothing ever reads
+    // the source RoutinePlannedSet/ProgramSessionPlannedSet again to learn what the target was. See
+    // WorkoutRepository.startRoutine for the only caller.
+    @Transaction
+    suspend fun appendPlannedSet(id: String, workoutExerciseId: String, targetReps: Int?, targetWeight: Double?): WorkoutSetEntity {
+        require(targetWeight == null || targetWeight >= 0.0) { "targetWeight must not be negative" }
+        require(targetReps == null || targetReps >= 0) { "targetReps must not be negative" }
+        val nextPosition = maxPosition(workoutExerciseId) + 1
+        val entity = WorkoutSetEntity(
+            id = id,
+            workoutExerciseId = workoutExerciseId,
+            position = nextPosition,
+            targetReps = targetReps,
+            targetWeight = targetWeight,
+        )
+        insert(entity)
+        return entity
+    }
 }

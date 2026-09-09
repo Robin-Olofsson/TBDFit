@@ -12,6 +12,12 @@ import com.tbdfit.phone.wearreplication.WearReplicaDao
 import com.tbdfit.phone.wearreplication.WearReplicaEntity
 import com.tbdfit.phone.workout.ExerciseDao
 import com.tbdfit.phone.workout.ExerciseEntity
+import com.tbdfit.phone.workout.RoutineDao
+import com.tbdfit.phone.workout.RoutineEntity
+import com.tbdfit.phone.workout.RoutineExerciseDao
+import com.tbdfit.phone.workout.RoutineExerciseEntity
+import com.tbdfit.phone.workout.RoutinePlannedSetDao
+import com.tbdfit.phone.workout.RoutinePlannedSetEntity
 import com.tbdfit.phone.workout.WorkoutDao
 import com.tbdfit.phone.workout.WorkoutEntity
 import com.tbdfit.phone.workout.WorkoutExerciseDao
@@ -47,6 +53,12 @@ import com.tbdfit.phone.workout.WorkoutSetEntity
 // identity root (see its own doc comment) and turns Workout.ownerId / (new) Exercise.ownerId from
 // free-form strings into real foreign keys against it, enforced by Room/SQLite rather than by
 // application discipline alone. See MIGRATION_5_6.
+//
+// v7 — Slice A of docs/architecture/program-routine-first-slice-design.md: introduces the real
+// Routine/RoutineExercise/RoutinePlannedSet planning domain (Program is a later slice, not
+// implemented here), Workout.originRoutineId (informational provenance, ON DELETE SET NULL), and
+// WorkoutSet.targetReps/targetWeight (the execution target snapshot, copied once at START — see
+// WorkoutRepository.startRoutine). See MIGRATION_6_7.
 @Database(
     entities = [
         LocalRecordEntity::class,
@@ -56,8 +68,11 @@ import com.tbdfit.phone.workout.WorkoutSetEntity
         WorkoutEntity::class,
         WorkoutExerciseEntity::class,
         WorkoutSetEntity::class,
+        RoutineEntity::class,
+        RoutineExerciseEntity::class,
+        RoutinePlannedSetEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -68,6 +83,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
     abstract fun workoutExerciseDao(): WorkoutExerciseDao
     abstract fun workoutSetDao(): WorkoutSetDao
+    abstract fun routineDao(): RoutineDao
+    abstract fun routineExerciseDao(): RoutineExerciseDao
+    abstract fun routinePlannedSetDao(): RoutinePlannedSetDao
 
     companion object {
         private const val DATABASE_NAME = "tbdfit-local.db"
@@ -196,9 +214,73 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Slice A of program-routine-first-slice-design.md. The three new Routine* tables are pure
+        // `CREATE TABLE` additions (no existing data to preserve — same shape as MIGRATION_3_4's
+        // original workout-domain table introduction). `workout_sets.targetReps`/`targetWeight` are
+        // plain nullable columns with no foreign key, so a simple `ALTER TABLE ADD COLUMN` suffices
+        // — no table recreate needed for those two. `workouts.originRoutineId` DOES need a real
+        // foreign key, which SQLite cannot add via `ALTER TABLE ADD COLUMN`, so `workouts` is
+        // recreated using the same create-copy-drop-rename technique already used and tested in
+        // MIGRATION_5_6. Existing rows get `originRoutineId = NULL` and both target columns `NULL`
+        // — correct and lossless, since no Workout/WorkoutSet created before this slice ever had a
+        // Routine origin or a source plan.
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `routines` (`id` TEXT NOT NULL, `ownerId` TEXT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `lastModifiedAt` INTEGER, " +
+                        "PRIMARY KEY(`id`), " +
+                        "FOREIGN KEY(`ownerId`) REFERENCES `local_accounts`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT)",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_routines_ownerId` ON `routines` (`ownerId`)")
+
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `routine_exercises` (`id` TEXT NOT NULL, " +
+                        "`routineId` TEXT NOT NULL, `exerciseId` TEXT NOT NULL, `position` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`), " +
+                        "FOREIGN KEY(`routineId`) REFERENCES `routines`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE, " +
+                        "FOREIGN KEY(`exerciseId`) REFERENCES `exercises`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT)",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_routine_exercises_routineId` ON `routine_exercises` (`routineId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_routine_exercises_exerciseId` ON `routine_exercises` (`exerciseId`)")
+
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `routine_planned_sets` (`id` TEXT NOT NULL, " +
+                        "`routineExerciseId` TEXT NOT NULL, `position` INTEGER NOT NULL, `plannedReps` INTEGER, " +
+                        "`plannedWeight` REAL, PRIMARY KEY(`id`), " +
+                        "FOREIGN KEY(`routineExerciseId`) REFERENCES `routine_exercises`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_routine_planned_sets_routineExerciseId` " +
+                        "ON `routine_planned_sets` (`routineExerciseId`)",
+                )
+
+                db.execSQL("ALTER TABLE workout_sets ADD COLUMN targetReps INTEGER")
+                db.execSQL("ALTER TABLE workout_sets ADD COLUMN targetWeight REAL")
+
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `workouts_new` (`id` TEXT NOT NULL, `ownerId` TEXT, " +
+                        "`status` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `completedAt` INTEGER, " +
+                        "`lastModifiedAt` INTEGER, `createdAt` INTEGER NOT NULL, `originRoutineId` TEXT, " +
+                        "PRIMARY KEY(`id`), " +
+                        "FOREIGN KEY(`ownerId`) REFERENCES `local_accounts`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT, " +
+                        "FOREIGN KEY(`originRoutineId`) REFERENCES `routines`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL)",
+                )
+                db.execSQL(
+                    "INSERT INTO workouts_new (id, ownerId, status, startedAt, completedAt, lastModifiedAt, createdAt, originRoutineId) " +
+                        "SELECT id, ownerId, status, startedAt, completedAt, lastModifiedAt, createdAt, NULL FROM workouts",
+                )
+                db.execSQL("DROP TABLE workouts")
+                db.execSQL("ALTER TABLE workouts_new RENAME TO workouts")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_workouts_ownerId` ON `workouts` (`ownerId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_workouts_originRoutineId` ON `workouts` (`originRoutineId`)")
+            }
+        }
+
         fun build(context: Context, name: String = DATABASE_NAME): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, name)
-                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
     }
 }

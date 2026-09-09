@@ -1,7 +1,10 @@
+import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useOwnProfile } from '../auth/useOwnProfile'
-import { PROTOTYPE_DASHBOARD_STATS, PROTOTYPE_HISTORY, PROTOTYPE_ROUTINES } from '../data/prototypeData'
+import { PROTOTYPE_DASHBOARD_STATS, PROTOTYPE_HISTORY } from '../data/prototypeData'
+import { listMyRoutines } from '../data/routines'
+import { queryKeys } from '../queryKeys'
 import StatCard from '../components/StatCard'
 import PlanCard from '../components/PlanCard'
 import ActivityRow from '../components/ActivityRow'
@@ -12,15 +15,31 @@ import ActivityRow from '../components/ActivityRow'
 // landing destination — see docs/product/frontend-prototype-notes.md for the explicit real vs.
 // prototype breakdown and the note that this deviates from that doc pending human evaluation.
 //
-// The greeting uses REAL identity (profiles.username via useOwnProfile, falling back to the real
-// session email — never invented). Everything else on this page reuses the SAME sample data as
-// Plan/History (PROTOTYPE_ROUTINES/PROTOTYPE_HISTORY) rather than a second, disconnected data set —
-// see PlanPage.tsx/HistoryPage.tsx for where the same routines/history are shown in full.
+// The greeting uses REAL identity (profiles.display_name — always populated once a profile row
+// exists, initialized from username at creation — then profiles.username, via useOwnProfile,
+// falling back to the real session email — never invented). "Your Routines" below is
+// now REAL data too (see supabase/migrations/20260910120000_create_routines.sql) — a brand-new
+// account correctly shows no routines here rather than a fake seeded list. "Recent Activity"
+// remains PROTOTYPE_HISTORY — History has no backend yet, out of scope for the Routine vertical
+// slice.
 export default function HomePage() {
   const { session } = useAuth()
-  const { username } = useOwnProfile()
+  const { username, displayName } = useOwnProfile()
   const navigate = useNavigate()
-  const label = username ?? session?.user.email ?? 'there'
+  const label = displayName ?? username ?? session?.user.email ?? 'there'
+  const userId = session?.user.id ?? ''
+
+  // Deliberately the SAME query key PlanPage.tsx uses — this is one cached list shared by both
+  // screens, not a second independent fetch. Visiting Home right after Plan (or vice versa) never
+  // re-requests the list while it's still fresh (see docs/architecture/web-server-state-cache.md).
+  const { data: routines } = useQuery({
+    queryKey: queryKeys.routines.list(userId),
+    queryFn: listMyRoutines,
+    // Home's dashboard is a convenience surface, not the source of truth for Routines — a fetch
+    // failure here degrades to an empty section rather than surfacing an error; PlanPage.tsx is
+    // where a real error is shown for the same underlying query.
+    throwOnError: false,
+  })
 
   return (
     <div className="page page-wide">
@@ -59,14 +78,20 @@ export default function HomePage() {
             </Link>
           </div>
           <div className="plan-card-list">
-            {PROTOTYPE_ROUTINES.map((routine) => (
-              <PlanCard
-                key={routine.id}
-                title={routine.name}
-                subtitle={routine.exercises.map((exercise) => exercise.name).join(' · ')}
-                to={`/plan/${routine.id}`}
-              />
-            ))}
+            {routines === undefined ? (
+              <p className="page-subtitle">Loading…</p>
+            ) : routines.length === 0 ? (
+              <p className="page-subtitle">No routines yet — create your first one.</p>
+            ) : (
+              routines.slice(0, 3).map((routine) => (
+                <PlanCard
+                  key={routine.id}
+                  title={routine.name}
+                  subtitle={routine.exercises.map((exercise) => exercise.exerciseName).join(' · ') || 'No exercises yet'}
+                  to={`/plan/${routine.id}`}
+                />
+              ))
+            )}
           </div>
         </section>
 

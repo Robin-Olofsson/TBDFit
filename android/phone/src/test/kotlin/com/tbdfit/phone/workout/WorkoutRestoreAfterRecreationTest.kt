@@ -44,7 +44,7 @@ class WorkoutRestoreAfterRecreationTest {
     }
 
     private fun repositoryFor(db: AppDatabase) =
-        WorkoutRepository(db.workoutDao(), db.workoutExerciseDao(), db.workoutSetDao(), db.exerciseDao(), db.localAccountDao())
+        WorkoutRepository(db.workoutDao(), db.workoutExerciseDao(), db.workoutSetDao(), db.exerciseDao(), db.localAccountDao(), db.routineDao(), db.routineExerciseDao(), db.routinePlannedSetDao(), db)
 
     @Test
     fun anActiveWorkoutStartedBeforeRecreationIsRestoredAfterwardsAsTheActiveUiState() = runTest {

@@ -157,6 +157,20 @@ private fun SetRow(displayNumber: Int, set: WorkoutSetEntity, repository: Workou
     var completionRejectedMessage by remember(set.id) { mutableStateOf<String?>(null) }
 
     Column(modifier = modifier.fillMaxWidth()) {
+        // Slice A execution target snapshot (program-routine-first-slice-design.md) — target*
+        // is frozen at START and never re-read from the source Routine, so this label is always
+        // exactly what this Workout's own row already stores; it never re-queries planning data.
+        // Null for a plain manually-added set (no source plan) — nothing shown in that case, no
+        // layout change from before this slice.
+        if (set.targetReps != null || set.targetWeight != null) {
+            val weightLabel = set.targetWeight?.let { "$it kg" } ?: "bodyweight"
+            Text(
+                "Target: $weightLabel × ${set.targetReps ?: "-"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 24.dp),
+            )
+        }
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("$displayNumber", modifier = Modifier.width(24.dp))
             OutlinedTextField(

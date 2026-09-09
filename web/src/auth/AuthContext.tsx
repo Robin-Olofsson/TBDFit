@@ -26,7 +26,11 @@ interface AuthContextValue {
   pendingConfirmationEmail: string | null
   restoreErrorMessage: string | null
   signIn: (email: string, password: string) => Promise<AuthActionResult>
-  signUp: (email: string, password: string) => Promise<AuthActionResult>
+  // A typed object rather than positional args, even though it's just these two fields today:
+  // account creation is deliberately Email + Password ONLY (see web/README.md's "Identity model" —
+  // username/display_name are TBDFit profile data, created explicitly after SIGNED_IN via
+  // ProfileSetupForm, never collected or transported at signup time).
+  signUp: (params: { email: string; password: string }) => Promise<AuthActionResult>
   signOut: () => Promise<void>
   returnToSignIn: () => void
 }
@@ -95,15 +99,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ok: true }
   }, [])
 
-  const signUp = useCallback(async (email: string, password: string): Promise<AuthActionResult> => {
+  const signUp = useCallback(async ({ email, password }: { email: string; password: string }): Promise<AuthActionResult> => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      // Sends the confirmation link back to wherever this app is currently running (dev or a
-      // future deployed origin) rather than a hardcoded URL — see web/README.md for the exact
-      // origin(s) that must additionally be registered in the Supabase Dashboard's Redirect URLs
-      // for this to actually work end-to-end (not done by this change — no dashboard access).
-      options: { emailRedirectTo: window.location.origin },
+      options: {
+        // Sends the confirmation link back to wherever this app is currently running (dev or a
+        // future deployed origin) rather than a hardcoded URL — see web/README.md for the exact
+        // origin(s) that must additionally be registered in the Supabase Dashboard's Redirect URLs
+        // for this to actually work end-to-end (not done by this change — no dashboard access).
+        emailRedirectTo: window.location.origin,
+        // Deliberately no `data:` — Supabase Auth account creation carries ONLY email/password.
+        // TBDFit profile data (username, display_name) is not collected here and never rides along
+        // as auth user metadata; it's created explicitly after SIGNED_IN by ProfileSetupForm (see
+        // profileState.ts / profileCreation.ts). This is a deliberate reversal of an earlier design
+        // that transported a signup-time username through `options.data.desired_username` — that
+        // machinery conflated "create a Supabase Auth account" with "create a TBDFit product
+        // profile," two separate lifecycle steps (see web/README.md's "Identity model").
+      },
     })
     if (error) return { ok: false, message: mapAuthError(error) }
     // Email confirmation is enabled on the real configured project (see

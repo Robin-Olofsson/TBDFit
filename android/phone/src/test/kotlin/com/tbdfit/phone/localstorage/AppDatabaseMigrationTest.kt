@@ -151,4 +151,73 @@ class AppDatabaseMigrationTest {
 
         v6.close()
     }
+
+    // Load-bearing test for Slice A of program-routine-first-slice-design.md: proves MIGRATION_6_7
+    // (1) preserves every pre-existing entity type untouched, (2) gives existing workouts/
+    // workout_sets rows correct NULL defaults for the new provenance/target columns (none of them
+    // could ever have had a Routine origin or a source plan), and (3) the three new Routine tables
+    // exist and are immediately usable — and that the resulting schema is one Room's own validator
+    // considers a genuine match for the current entity set (i.e. the new foreign keys, including
+    // originRoutineId's ON DELETE SET NULL, are real).
+    @Test
+    fun migrationFrom6To7AddsRoutineDomainAndPreservesExistingWorkoutData() {
+        val v6 = helper.createDatabase(testDbName, 6)
+        v6.execSQL(
+            "INSERT INTO local_accounts (id, createdAt) VALUES ('owner-a', 1700000000000)",
+        )
+        v6.execSQL(
+            "INSERT INTO exercises (id, name, normalizedName, source, ownerId, createdAt) VALUES " +
+                "('builtin_bench_press', 'Bench Press', 'bench press', 'BUILT_IN', NULL, 1700000000000)",
+        )
+        v6.execSQL(
+            "INSERT INTO workouts (id, ownerId, status, startedAt, completedAt, lastModifiedAt, createdAt) VALUES " +
+                "('pre-existing-workout', 'owner-a', 'COMPLETED', 1700000000000, 1700000005000, NULL, 1700000000000)",
+        )
+        v6.execSQL(
+            "INSERT INTO workout_exercises (id, workoutId, exerciseId, position) VALUES " +
+                "('pre-existing-we', 'pre-existing-workout', 'builtin_bench_press', 0)",
+        )
+        v6.execSQL(
+            "INSERT INTO workout_sets (id, workoutExerciseId, position, weight, reps, isCompleted, completedAt) VALUES " +
+                "('pre-existing-set', 'pre-existing-we', 0, 80.0, 8, 1, 1700000005000)",
+        )
+        v6.close()
+
+        val v7 = helper.runMigrationsAndValidate(testDbName, 7, true, AppDatabase.MIGRATION_6_7)
+
+        // Pre-existing workout survives with the new provenance column NULL.
+        val workoutCursor = v7.query("SELECT status, originRoutineId FROM workouts WHERE id = 'pre-existing-workout'")
+        assertTrue(workoutCursor.moveToFirst())
+        assertEquals("COMPLETED", workoutCursor.getString(0))
+        assertTrue(workoutCursor.isNull(1))
+        workoutCursor.close()
+
+        // Pre-existing set survives with its real values untouched and both new target columns NULL.
+        val setCursor = v7.query("SELECT weight, reps, isCompleted, targetReps, targetWeight FROM workout_sets WHERE id = 'pre-existing-set'")
+        assertTrue(setCursor.moveToFirst())
+        assertEquals(80.0, setCursor.getDouble(0), 0.0)
+        assertEquals(8, setCursor.getInt(1))
+        assertEquals(1, setCursor.getInt(2))
+        assertTrue(setCursor.isNull(3))
+        assertTrue(setCursor.isNull(4))
+        setCursor.close()
+
+        // The three new Routine tables exist, are empty, and are immediately writable.
+        for (table in listOf("routines", "routine_exercises", "routine_planned_sets")) {
+            val countCursor = v7.query("SELECT COUNT(*) FROM $table")
+            assertTrue(countCursor.moveToFirst())
+            assertEquals(0, countCursor.getInt(0))
+            countCursor.close()
+        }
+        v7.execSQL(
+            "INSERT INTO routines (id, ownerId, name, createdAt, lastModifiedAt) VALUES " +
+                "('new-routine', 'owner-a', 'Push Day', 1700000010000, NULL)",
+        )
+        val newRoutineCursor = v7.query("SELECT name FROM routines WHERE id = 'new-routine'")
+        assertTrue(newRoutineCursor.moveToFirst())
+        assertEquals("Push Day", newRoutineCursor.getString(0))
+        newRoutineCursor.close()
+
+        v7.close()
+    }
 }
