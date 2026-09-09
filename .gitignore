@@ -39,3 +39,7 @@ captures/
 
 # General
 *.log
+
+# Local design-reference assets (e.g. approved-mockup screenshots used while implementing a UI) —
+# these inform code changes but are not themselves a repository asset worth tracking long-term.
+frontpage login.png

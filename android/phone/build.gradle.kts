@@ -73,6 +73,26 @@ android {
             }
         }
     }
+
+    // Room's exported schema JSON history (android/phone/schemas/) is the durable-data policy this
+    // module now depends on — see docs/architecture/strength-workout-first-slice-design.md's
+    // PERSISTENCE/MIGRATION POLICY. It must be committed to version control, not gitignored: it is
+    // both the record migrations are checked against and what MigrationTestHelper reads to
+    // construct a real "old version" database.
+    //
+    // Deliberately added to the `main` source set, not `test`: Robolectric's unit-test asset
+    // resolution does not go through AGP's per-test-variant asset merge at all — its generated
+    // test_config.properties (android_merged_assets) points at the `debug` (main) variant's merged
+    // assets output regardless of which source set a test lives in. Confirmed by inspecting
+    // phone/build/intermediates/unit_test_config_directory/debugUnitTest/.../test_config.properties
+    // after `test`-only wiring silently produced a FileNotFoundException from MigrationTestHelper.
+    // The trade-off (a few KB of schema JSON shipping inside the real app's assets) is accepted as
+    // the standard, documented way to make Room migration tests runnable under Robolectric.
+    sourceSets {
+        getByName("main") {
+            assets.srcDirs("$projectDir/schemas")
+        }
+    }
 }
 
 dependencies {
@@ -104,4 +124,12 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.room.testing)
+}
+
+// Room schema export — see the durable-data policy comment above. Generated JSON lands in
+// android/phone/schemas/ and must be committed; MigrationTestHelper reads it via the test source
+// set's assets.srcDirs wiring above.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }

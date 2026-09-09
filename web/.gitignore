@@ -1,0 +1,29 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Real Supabase URL/anon-key values for local dev — see .env.example for the placeholder shape.
+# The anon key is browser-safe by design (Supabase's security boundary is RLS, not key secrecy),
+# but this stays out of git for environment hygiene, matching android/local.properties' precedent.
+.env
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

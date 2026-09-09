@@ -50,11 +50,14 @@ class PerformLogoutTest {
             WearReplicaEntity(id = UUID.randomUUID().toString(), createdAt = 1L, value = "v", receivedAt = 1L),
         )
         val gateway = FakeAuthGateway(initial = AuthState.SignedIn(AuthSession("uid-1", "user@example.com")))
+        val accountCache = LastSignedInAccountCache(context)
+        accountCache.recordSignedIn("uid-1")
 
-        performLogout(gateway, db.localRecordDao(), db.wearReplicaDao())
+        performLogout(gateway, db.localRecordDao(), db.wearReplicaDao(), accountCache)
 
         assertEquals(1, gateway.signOutCalls)
         assertTrue(db.localRecordDao().getAll().first().isEmpty())
         assertTrue(db.wearReplicaDao().getAll().first().isEmpty())
+        assertEquals(null, accountCache.lastKnownUserId())
     }
 }
