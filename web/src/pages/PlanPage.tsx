@@ -1,9 +1,14 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ListChecks } from 'lucide-react'
-import { deleteRoutine, listMyRoutines } from '../data/routines'
+import { deleteRoutine, duplicateRoutine, listMyRoutines } from '../data/routines'
 import { useAuth } from '../auth/AuthContext'
 import { queryKeys } from '../queryKeys'
+import { notifyRoutineDeleted, notifyRoutineDuplicated } from '../lib/toast'
+import ConfirmDialog from '../components/ConfirmDialog'
+import RowActionsMenu from '../components/RowActionsMenu'
+import type { Routine } from '../types'
 
 // REAL, Supabase-backed — see supabase/migrations/20260910120000_create_routines.sql and
 // docs/product/frontend-prototype-notes.md. Route stays /plan (predates the "Routine" nav rename,
@@ -21,6 +26,10 @@ export default function PlanPage() {
   // session always exists — no non-null assertion needed, just a defensive fallback.
   const userId = session?.user.id ?? ''
   const queryClient = useQueryClient()
+  // Which row's delete is pending confirmation, if any — a list has many rows, so (unlike
+  // RoutineDetailPage's single Delete button) this needs to remember WHICH routine the one shared
+  // ConfirmDialog below is currently asking about.
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
 
   const { data: routines, isLoading, isError, error } = useQuery({
     queryKey: queryKeys.routines.list(userId),
@@ -35,10 +44,28 @@ export default function PlanPage() {
       // from this routine is a completely separate cached query (queryKeys.programs.*) and is
       // deliberately never touched here — the snapshot invariant applies to the cache layer exactly
       // as it does to the database (see Program Mutation Reconciliation in the architecture doc).
-      queryClient.setQueryData(queryKeys.routines.list(userId), (prev: typeof routines) => prev?.filter((r) => r.id !== deletedId))
+      queryClient.setQueryData(queryKeys.routines.list(userId), (prev: Routine[] | undefined) => prev?.filter((r) => r.id !== deletedId))
       queryClient.removeQueries({ queryKey: queryKeys.routines.detail(userId, deletedId) })
+      setPendingDelete(null)
     },
   })
+
+  // Duplicate has no confirmation step (non-destructive, trivially undoable — just delete the
+  // copy) and no navigation: it's a list-level action, so the new copy simply appears in the same
+  // list rather than whisking the user away to it. Invalidate (not a targeted cache append) since
+  // duplicateRoutine returns only the new id, not the full created aggregate — the same
+  // reconciliation choice save_routine's own callers already make elsewhere.
+  const duplicateMutation = useMutation({
+    mutationFn: duplicateRoutine,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(userId) })
+    },
+  })
+
+  const handleConfirmDelete = () => {
+    if (!pendingDelete) return
+    void notifyRoutineDeleted(deleteMutation.mutateAsync(pendingDelete.id)).catch(() => {})
+  }
 
   return (
     <div className="page">
@@ -59,6 +86,11 @@ export default function PlanPage() {
           {deleteMutation.error instanceof Error ? deleteMutation.error.message : 'Failed to delete routine.'}
         </p>
       )}
+      {duplicateMutation.isError && (
+        <p className="form-error">
+          {duplicateMutation.error instanceof Error ? duplicateMutation.error.message : 'Failed to duplicate routine.'}
+        </p>
+      )}
 
       {isLoading ? (
         // Only shown when there is genuinely no cached data yet (first-ever load) — TanStack
@@ -77,7 +109,6 @@ export default function PlanPage() {
               <th>Routine</th>
               <th>Exercises</th>
               <th></th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -87,27 +118,38 @@ export default function PlanPage() {
                 <td onClick={() => navigate(`/plan/${routine.id}`)}>
                   {routine.exercises.map((e) => e.exerciseName).join(', ') || '—'}
                 </td>
-                <td className="data-row-action" onClick={() => navigate(`/plan/${routine.id}`)}>
-                  Open →
-                </td>
                 <td>
-                  <button
-                    type="button"
-                    className="btn-link btn-link-danger"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (!window.confirm(`Delete "${routine.name}"? This cannot be undone.`)) return
-                      deleteMutation.mutate(routine.id)
-                    }}
-                  >
-                    Delete
-                  </button>
+                  <RowActionsMenu
+                    label={`Actions for ${routine.name}`}
+                    items={[
+                      {
+                        label: 'Duplicate',
+                        onSelect: () => void notifyRoutineDuplicated(duplicateMutation.mutateAsync(routine)).catch(() => {}),
+                      },
+                      {
+                        label: 'Delete',
+                        danger: true,
+                        onSelect: () => setPendingDelete({ id: routine.id, name: routine.name }),
+                      },
+                    ]}
+                  />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete routine?"
+        description={`This will permanently delete "${pendingDelete?.name}".`}
+        confirmLabel="Delete"
+        destructive
+        pending={deleteMutation.isPending}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

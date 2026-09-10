@@ -45,14 +45,14 @@ export default function AccountMenu({ initial, onSignOut }: AccountMenuProps) {
         {initial}
       </button>
       {open && (
-        <div className="account-menu-dropdown" role="menu">
-          <Link to="/profile" role="menuitem" className="account-menu-item" onClick={() => setOpen(false)}>
+        <div className="dropdown-panel account-menu-dropdown" role="menu">
+          <Link to="/profile" role="menuitem" className="dropdown-item account-menu-item" onClick={() => setOpen(false)}>
             Profile &amp; settings
           </Link>
           <button
             type="button"
             role="menuitem"
-            className="account-menu-item account-menu-item-danger"
+            className="dropdown-item account-menu-item dropdown-item-danger"
             onClick={() => {
               setOpen(false)
               onSignOut()

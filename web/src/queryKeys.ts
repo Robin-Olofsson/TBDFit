@@ -29,5 +29,23 @@ export const queryKeys = {
   },
   profile: {
     detail: (userId: string) => ['profile', userId, 'detail'] as const,
+    summary: (userId: string) => ['profile', userId, 'summary'] as const,
+  },
+  // Range-scoped in addition to the usual userId scoping: two different date ranges for the same
+  // account are genuinely different result sets, not a staleness concern — a future Statistics tab
+  // paging between months must not read another month's cached series.
+  dailyActivity: {
+    range: (userId: string, startDate: string, endDate: string) =>
+      ['dailyActivity', userId, 'range', startDate, endDate] as const,
+  },
+  // Same range-scoping reasoning as dailyActivity.range above — a different visible-month range for
+  // the same account is a genuinely different result set, not a staleness concern.
+  workoutHistory: {
+    range: (userId: string, startDate: string, endDate: string) =>
+      ['workoutHistory', userId, 'range', startDate, endDate] as const,
+  },
+  scheduledSessions: {
+    range: (userId: string, startInstant: string, endInstant: string) =>
+      ['scheduledSessions', userId, 'range', startInstant, endInstant] as const,
   },
 } as const

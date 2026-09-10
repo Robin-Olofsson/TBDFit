@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import HomePage from './pages/HomePage'
 import PlanPage from './pages/PlanPage'
 import RoutineDetailPage from './pages/RoutineDetailPage'
@@ -12,9 +13,11 @@ import LoginPage from './pages/LoginPage'
 import TopNav from './components/TopNav'
 import AccountMenu from './components/AccountMenu'
 import { useAuth } from './auth/AuthContext'
+import type { AuthPhase } from './auth/AuthContext'
 import { useOwnProfile } from './auth/useOwnProfile'
 import { useQueryIdentitySync } from './auth/useQueryIdentitySync'
 import { isAuthenticatedPhase, requiresAuthScreen } from './auth/authPhase'
+import { getAppColorScheme } from './lib/theme'
 
 // Authenticated boundary (real, production-backed — see docs/product/frontend-prototype-notes.md):
 // the product shell below only ever renders once a real Supabase session exists. This is a decision
@@ -36,6 +39,24 @@ export default function App() {
   // before AuthenticatedShell ever mounts. See useQueryIdentitySync's own doc comment.
   useQueryIdentitySync()
 
+  return (
+    <>
+      {renderForPhase(phase)}
+      {/* Mounted once, above every phase branch, specifically so a toast survives whatever this
+          render decides to show next — e.g. Routine save's success toast (see
+          RoutineEditorPage.tsx/lib/toast.ts) must still be visible after the immediate post-save
+          `navigate(...)` swaps the routed page underneath it. `theme` is read from the app's own
+          CSS-declared color-scheme (see lib/theme.ts) rather than hardcoded here, so it can never
+          silently drift from what index.css actually renders; the matching
+          `[data-sonner-toaster][data-sonner-theme='dark']` override there themes the toast surface
+          to the same TBDFit tokens either way. top-center, not top-right, per the developer's
+          Notification-vs-Confirmation UX split — see ConfirmDialog.tsx for the Confirmation half. */}
+      <Toaster theme={getAppColorScheme()} position="top-center" />
+    </>
+  )
+}
+
+function renderForPhase(phase: AuthPhase) {
   if (phase === 'RESTORING_SESSION') {
     return (
       <div className="auth-shell">

@@ -50,18 +50,14 @@ export default function HomePage() {
           </h1>
           <p className="page-subtitle">Consistency builds results.</p>
         </div>
-        {/* Navigates to routine selection — deliberately does NOT execute a workout. Whether Web
-            ever executes a workout at all remains an open product question (see
-            adr/0005-multi-client-responsibility-strategy.md) — this button must not silently
-            resolve that question by pretending to start one. */}
+        {/* Navigates to Routine selection — a planning shortcut, not workout execution. Web is
+            explicitly NOT a workout-execution client (product decision): it plans, schedules, and
+            reads completed history/statistics/calendar; starting/logging/finishing a workout is
+            Phone/Watch-only, later. The label must never imply this button starts anything. */}
         <button type="button" className="btn-primary" onClick={() => navigate('/plan')}>
-          Start Workout
+          Browse Routines
         </button>
       </div>
-
-      <p className="prototype-inline-note">
-        The stats below are representative prototype values — no analytics backend exists yet.
-      </p>
 
       <div className="stat-row">
         {PROTOTYPE_DASHBOARD_STATS.map((stat) => (

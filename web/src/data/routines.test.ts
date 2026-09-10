@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { mapExerciseRow, mapRoutineRow, toSaveRoutinePayload } from './routines'
+import { mapExerciseRow, mapRoutineRow, toRoutineExerciseDrafts, toSaveRoutinePayload } from './routines'
 import { EQUIPMENT_OPTIONS, EXERCISE_TYPE_OPTIONS, equipmentLabel, exerciseTypeLabel } from '../lib/exerciseLabels'
-import type { RoutineExerciseDraft } from '../types'
+import type { Routine, RoutineExerciseDraft } from '../types'
 
 // Pure-logic tests only — no live Supabase connection, no component-rendering harness (this
 // project's vitest setup has neither jsdom nor a component-testing library configured; adding one
@@ -22,19 +22,23 @@ describe('mapRoutineRow', () => {
           id: 're-2',
           position: 1,
           exercise_id: 'ex-overhead-press',
+          note: null,
+          rest_timer_seconds: null,
           exercises: { name: 'Overhead Press' },
           routine_planned_sets: [
-            { id: 'set-b', position: 0, target_reps: 10, target_weight: null },
+            { id: 'set-b', position: 0, target_reps: 10, target_weight: null, set_type: 'NORMAL' as const },
           ],
         },
         {
           id: 're-1',
           position: 0,
           exercise_id: 'ex-bench-press',
+          note: 'Keep elbows tucked',
+          rest_timer_seconds: 90,
           exercises: { name: 'Bench Press' },
           routine_planned_sets: [
-            { id: 'set-2', position: 1, target_reps: 8, target_weight: 80 },
-            { id: 'set-1', position: 0, target_reps: 8, target_weight: 80 },
+            { id: 'set-2', position: 1, target_reps: 8, target_weight: 80, set_type: 'NORMAL' as const },
+            { id: 'set-1', position: 0, target_reps: 8, target_weight: 80, set_type: 'WARMUP' as const },
           ],
         },
       ],
@@ -48,7 +52,12 @@ describe('mapRoutineRow', () => {
     expect(routine.exercises.map((e) => e.exerciseName)).toEqual(['Bench Press', 'Overhead Press'])
     // Planned sets within an exercise re-sorted by position too.
     expect(routine.exercises[0].plannedSets.map((s) => s.id)).toEqual(['set-1', 'set-2'])
-    expect(routine.exercises[0].plannedSets[0]).toMatchObject({ targetReps: 8, targetWeight: 80 })
+    expect(routine.exercises[0].plannedSets[0]).toMatchObject({ targetReps: 8, targetWeight: 80, setType: 'WARMUP' })
+    // note/restTimerSeconds pass through verbatim per exercise, independently of each other.
+    expect(routine.exercises[0]).toMatchObject({ note: 'Keep elbows tucked', restTimerSeconds: 90 })
+    expect(routine.exercises[1]).toMatchObject({ note: null, restTimerSeconds: null })
+    // set_type passes through per-set, independently of its sibling set's type.
+    expect(routine.exercises[0].plannedSets.map((s) => s.setType)).toEqual(['WARMUP', 'NORMAL'])
   })
 
   it('falls back to a placeholder name if the embedded exercise is missing (should not happen under RLS, but must not crash)', () => {
@@ -58,7 +67,7 @@ describe('mapRoutineRow', () => {
       created_at: '2026-09-10T00:00:00Z',
       updated_at: '2026-09-10T00:00:00Z',
       routine_exercises: [
-        { id: 're-1', position: 0, exercise_id: 'ex-1', exercises: null, routine_planned_sets: [] },
+        { id: 're-1', position: 0, exercise_id: 'ex-1', note: null, rest_timer_seconds: null, exercises: null, routine_planned_sets: [] },
       ],
     }
 
@@ -80,6 +89,39 @@ describe('mapRoutineRow', () => {
   })
 })
 
+describe('toRoutineExerciseDrafts', () => {
+  it('converts a Routine read shape into editor drafts, preserving values and reusing existing ids', () => {
+    const exercises: Routine['exercises'] = [
+      {
+        id: 're-1',
+        exerciseId: 'ex-bench-press',
+        exerciseName: 'Bench Press',
+        position: 0,
+        note: 'Keep elbows tucked',
+        restTimerSeconds: 90,
+        plannedSets: [{ id: 'set-1', position: 0, targetReps: 8, targetWeight: 80, setType: 'WARMUP' }],
+      },
+    ]
+
+    const drafts = toRoutineExerciseDrafts(exercises)
+
+    expect(drafts).toEqual([
+      {
+        id: 're-1',
+        exerciseId: 'ex-bench-press',
+        exerciseName: 'Bench Press',
+        note: 'Keep elbows tucked',
+        restTimerSeconds: 90,
+        plannedSets: [{ id: 'set-1', targetReps: 8, targetWeight: 80, setType: 'WARMUP' }],
+      },
+    ])
+    // No `position` field leaks into the draft shape — array order is the position source once
+    // fed into toSaveRoutinePayload/save_routine, per that function's own doc comment.
+    expect(drafts[0]).not.toHaveProperty('position')
+    expect(drafts[0].plannedSets[0]).not.toHaveProperty('position')
+  })
+})
+
 describe('toSaveRoutinePayload', () => {
   it('strips local-only draft ids and preserves array order as the save_routine position source', () => {
     const drafts: RoutineExerciseDraft[] = [
@@ -87,9 +129,11 @@ describe('toSaveRoutinePayload', () => {
         id: 'local-draft-1',
         exerciseId: 'ex-bench-press',
         exerciseName: 'Bench Press',
+        note: 'Keep elbows tucked',
+        restTimerSeconds: 90,
         plannedSets: [
-          { id: 'local-set-1', targetReps: 8, targetWeight: 80 },
-          { id: 'local-set-2', targetReps: null, targetWeight: null },
+          { id: 'local-set-1', targetReps: 8, targetWeight: 80, setType: 'WARMUP' },
+          { id: 'local-set-2', targetReps: null, targetWeight: null, setType: 'NORMAL' },
         ],
       },
     ]
@@ -99,14 +143,24 @@ describe('toSaveRoutinePayload', () => {
     expect(payload).toEqual([
       {
         exerciseId: 'ex-bench-press',
+        note: 'Keep elbows tucked',
+        restTimerSeconds: 90,
         plannedSets: [
-          { targetReps: 8, targetWeight: 80 },
-          { targetReps: null, targetWeight: null },
+          { targetReps: 8, targetWeight: 80, setType: 'WARMUP' },
+          { targetReps: null, targetWeight: null, setType: 'NORMAL' },
         ],
       },
     ])
     // No draft-only `id`/`exerciseName` field leaked into the network payload.
-    expect(Object.keys(payload[0])).toEqual(['exerciseId', 'plannedSets'])
+    expect(Object.keys(payload[0])).toEqual(['exerciseId', 'note', 'restTimerSeconds', 'plannedSets'])
+  })
+
+  it('passes through a freshly-added exercise\'s null note/restTimerSeconds explicitly, never omitting the keys', () => {
+    const drafts: RoutineExerciseDraft[] = [
+      { id: 'local-draft-1', exerciseId: 'ex-bench-press', exerciseName: 'Bench Press', note: null, restTimerSeconds: null, plannedSets: [] },
+    ]
+
+    expect(toSaveRoutinePayload(drafts)[0]).toMatchObject({ note: null, restTimerSeconds: null })
   })
 
   it('produces an empty array for a routine with no exercises (a valid, saveable state)', () => {

@@ -1,12 +1,16 @@
 # TBDFit Web
 
-A clickable UX prototype for the TBDFit Web client (see `docs/product/web-information-architecture.md`
-for the information architecture this implements, and `docs/product/frontend-prototype-notes.md`
-for the current production-backed vs. prototype-only classification of every screen).
+The TBDFit Web client (see `docs/product/web-information-architecture.md` for the information
+architecture this implements, and `docs/product/frontend-prototype-notes.md` for the current
+production-backed vs. prototype-only classification of every screen — most of the app, including
+the full Profile, is real and Supabase-backed today; a few screens like Home's dashboard framing and
+History remain intentionally prototype content pending further product work).
 
 Stack: Vite + React 19 + TypeScript + React Router, plain CSS — no component/state library, no SSR
-framework. This is the smallest reversible choice for a client-only UX prototype with no backend of
-its own (see the design docs above for why).
+framework. This was the smallest reversible choice when this client had no backend of its own; a
+real RLS-isolated Supabase backend (Routines, Programs, Profile/Social, completed Workout History,
+daily Movement, Scheduling) now underlies most of the app — see the design docs above and
+`docs/development/supabase-setup-and-verification.md` for the current state.
 
 ## Authentication — real, production-backed
 
@@ -149,6 +153,36 @@ shipping an icon-only button — icon-only is for low-ambiguity controls (close,
 overflow menu). Every icon-only button needs `aria-label`; a purely decorative icon needs
 `aria-hidden="true"`. Do not install a second icon library (react-icons, Font Awesome, Heroicons,
 Material Icons) — lucide-react plus custom SVG covers both cases.
+
+## Dropdown menus / popup lists
+
+Any small trigger-opened overlay (an account menu, a per-row "⋯" actions menu, or a value picker)
+applies the shared `dropdown-panel`/`dropdown-item` CSS classes (see `index.css`) alongside its own
+component-specific class, rather than redefining background/border/radius/shadow/spacing from
+scratch:
+
+```tsx
+<div className="dropdown-panel my-thing-dropdown" role="menu">
+  <button className="dropdown-item" role="menuitem">...</button>
+  <button className="dropdown-item dropdown-item-danger" role="menuitem">Delete</button>
+</div>
+```
+
+`dropdown-item-active` is available for a currently-selected option. The component-specific class
+(`my-thing-dropdown`) should contain only what genuinely differs per use — anchor side
+(`left`/`right`), `min-width`/`max-height`, `display: flex` vs. a `<ul>`'s `list-style: none` —
+never a second copy of the shared panel/item look. This is what keeps every dropdown in the app
+reading as one system instead of drifting slightly per component (see `AccountMenu.tsx`,
+`RowActionsMenu.tsx` for two real menu examples built this way).
+
+For "click a field to pick one value from a short list" (as opposed to a menu of actions), use
+`SelectField.tsx` instead of a native `<select>` — a native select's own popup can't be restyled at
+all, so anywhere that matters visually (Exercise Type, Equipment, Rest Timer) uses this field-styled
+trigger + `dropdown-panel` list instead. `RestTimerPicker.tsx` is a small typed wrapper around it;
+`ExerciseLibraryPanel.tsx`/`PlannedExercisesEditor.tsx` use it directly. Reach for a plain
+`<select className="table-input">` only for a genuinely one-off, low-visibility choice where this
+pattern would be overkill — flag it if you do, rather than silently reintroducing an inconsistent
+native popup.
 
 ## Remote live UX testing
 

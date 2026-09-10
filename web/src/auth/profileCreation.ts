@@ -50,3 +50,26 @@ export async function createOwnProfile(username: string, displayName: string): P
 
   return { username: data.username, displayName: data.display_name }
 }
+
+// Edit Profile's save call — updates display_name/bio only. Username is DELIBERATELY not a
+// parameter here: this table's username-*creation* uniqueness handling (above) is not the same
+// thing as a username-*change* policy, and no such policy has been designed or reviewed yet (a
+// change would need to consider, at minimum, what happens to anything that already referenced the
+// old username — out of scope for this task). Edit Profile therefore renders username read-only;
+// this function simply has no way to touch it. Relies on the existing `update own profile` RLS
+// policy (`(select auth.uid()) = user_id`), the same as createOwnProfile relies on `insert own
+// profile` — no SECURITY DEFINER function, no trigger.
+export async function updateOwnProfile(
+  displayName: string,
+  bio: string | null,
+): Promise<{ displayName: string; bio: string | null }> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ display_name: displayName, bio })
+    .select('display_name, bio')
+    .single()
+
+  if (error) throw error
+
+  return { displayName: data.display_name, bio: data.bio }
+}

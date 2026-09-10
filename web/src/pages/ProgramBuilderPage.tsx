@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Trash2 } from 'lucide-react'
 import {
   addSessionFromScratch,
   addWeek,
@@ -14,7 +15,9 @@ import {
 import { listMyRoutines } from '../data/routines'
 import { useAuth } from '../auth/AuthContext'
 import { queryKeys } from '../queryKeys'
+import { notifyProgramSessionDeleted, notifyProgramWeekDeleted } from '../lib/toast'
 import PlannedExercisesEditor from '../components/PlannedExercisesEditor'
+import ConfirmDialog from '../components/ConfirmDialog'
 import type { ProgramSession, RoutineExerciseDraft } from '../types'
 
 // REAL, Supabase-backed Program Builder — see supabase/migrations/20260911120000_create_programs.sql.
@@ -42,6 +45,10 @@ export default function ProgramBuilderPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [routinePickerOpen, setRoutinePickerOpen] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
+  // Which delete is pending confirmation, if any — a discriminated union rather than two separate
+  // booleans/ids, since exactly one shared ConfirmDialog below serves both the week-delete and
+  // session-delete flows (they differ only in copy and which mutation runs).
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'week' | 'session'; id: string } | null>(null)
 
   const programQueryKey = queryKeys.programs.detail(userId, programId ?? '')
   const { data: program, isLoading, isError } = useQuery({
@@ -89,6 +96,7 @@ export default function ProgramBuilderPage() {
       setMutationError(null)
       setSelectedWeekId(null)
       setSelectedSessionId(null)
+      setPendingDelete(null)
       void invalidateProgram()
     },
     onError: onMutationError,
@@ -120,6 +128,7 @@ export default function ProgramBuilderPage() {
     onSuccess: () => {
       setMutationError(null)
       setSelectedSessionId(null)
+      setPendingDelete(null)
       void invalidateProgram()
     },
     onError: onMutationError,
@@ -137,8 +146,8 @@ export default function ProgramBuilderPage() {
     return (
       <div className="page-wide">
         <p className="form-error">Failed to load program.</p>
-        <button type="button" className="btn-secondary" onClick={() => navigate('/programs')}>
-          &larr; Programs
+        <button type="button" className="btn-secondary btn-back" onClick={() => navigate('/programs')}>
+          <ArrowLeft size={16} aria-hidden="true" /> Programs
         </button>
       </div>
     )
@@ -161,19 +170,26 @@ export default function ProgramBuilderPage() {
   const selectedSession = selectedWeek?.sessions.find((s) => s.id === selectedSessionId) ?? selectedWeek?.sessions[0] ?? null
 
   const handleDeleteWeek = (weekId: string) => {
-    if (!window.confirm('Delete this week and all its sessions? This cannot be undone.')) return
-    deleteWeekMutation.mutate(weekId)
+    setPendingDelete({ kind: 'week', id: weekId })
   }
 
   const handleDeleteSession = (sessionId: string) => {
-    if (!window.confirm('Delete this session? This cannot be undone.')) return
-    deleteSessionMutation.mutate(sessionId)
+    setPendingDelete({ kind: 'session', id: sessionId })
+  }
+
+  const handleConfirmDelete = () => {
+    if (!pendingDelete) return
+    if (pendingDelete.kind === 'week') {
+      void notifyProgramWeekDeleted(deleteWeekMutation.mutateAsync(pendingDelete.id)).catch(() => {})
+    } else {
+      void notifyProgramSessionDeleted(deleteSessionMutation.mutateAsync(pendingDelete.id)).catch(() => {})
+    }
   }
 
   return (
     <div className="page-wide">
-      <button type="button" className="btn-link" onClick={() => navigate('/programs')}>
-        &larr; Programs
+      <button type="button" className="btn-link btn-back" onClick={() => navigate('/programs')}>
+        <ArrowLeft size={16} aria-hidden="true" /> Programs
       </button>
       <div className="page-header">
         <h1>{program.name}</h1>
@@ -249,8 +265,14 @@ export default function ProgramBuilderPage() {
                     >
                       {sessionDisplayName(session, index)}
                     </button>
-                    <button type="button" className="btn-icon" title="Delete session" onClick={() => handleDeleteSession(session.id)}>
-                      ×
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      aria-label="Delete session"
+                      title="Delete session"
+                      onClick={() => handleDeleteSession(session.id)}
+                    >
+                      <Trash2 size={14} aria-hidden="true" />
                     </button>
                   </li>
                 ))}
@@ -303,6 +325,21 @@ export default function ProgramBuilderPage() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete?.kind === 'week' ? 'Delete week?' : 'Delete session?'}
+        description={
+          pendingDelete?.kind === 'week'
+            ? 'This will permanently delete this week and all its sessions.'
+            : 'This will permanently delete this session.'
+        }
+        confirmLabel="Delete"
+        destructive
+        pending={pendingDelete?.kind === 'week' ? deleteWeekMutation.isPending : deleteSessionMutation.isPending}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }
@@ -328,7 +365,19 @@ function SessionEditor({ session, onSaved }: SessionEditorProps) {
       id: e.id,
       exerciseId: e.exerciseId,
       exerciseName: e.exerciseName,
-      plannedSets: e.plannedSets.map((s) => ({ id: s.id, targetReps: s.targetReps, targetWeight: s.targetWeight })),
+      // Program sessions have no note/rest-timer concept of their own (see
+      // supabase/migrations/20260914120000_add_routine_exercise_note_and_rest_timer.sql's own
+      // comment — that slice was scoped to Routine only) — RoutineExerciseDraft is a shared TS shape
+      // reused here as-is, but these two fields simply never populate for a Program session. The
+      // editor below is told not to render their inputs at all (showNoteAndRestTimer={false}), so
+      // there's no field a user could type into that would then be silently discarded on save.
+      note: null,
+      restTimerSeconds: null,
+      // set_type is likewise a Routine-only column (20260915120000_add_planned_set_type.sql) — the
+      // shared editor is told not to render its selector for Program sessions
+      // (showNoteAndRestTimer={false}), so 'NORMAL' here is an inert default never surfaced to the
+      // user, never read by toSaveProgramSessionPayload.
+      plannedSets: e.plannedSets.map((s) => ({ id: s.id, targetReps: s.targetReps, targetWeight: s.targetWeight, setType: 'NORMAL' as const })),
     })),
   )
 
@@ -353,7 +402,7 @@ function SessionEditor({ session, onSaved }: SessionEditorProps) {
         onChange={(e) => setName(e.target.value)}
         placeholder="e.g. Upper A"
       />
-      <PlannedExercisesEditor exercises={exercises} onChange={setExercises} />
+      <PlannedExercisesEditor exercises={exercises} onChange={setExercises} showNoteAndRestTimer={false} />
       <div className="page-actions">
         <button type="button" className="btn-primary" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
           {saveMutation.isPending ? 'Saving…' : 'Save Session'}

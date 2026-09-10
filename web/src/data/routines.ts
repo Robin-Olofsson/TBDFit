@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
-import type { ExerciseSummary, PlannedSetDraft, Routine, RoutineExerciseDraft } from '../types'
+import type { ExerciseSummary, PlannedSetDraft, Routine, RoutineExercise, RoutineExerciseDraft, SetType } from '../types'
 
 // The Web Routine data boundary — every real Supabase read/write for Routines goes through this
 // module, not scattered inline `supabase.from(...)` calls in page components (see the review
@@ -8,20 +8,23 @@ import type { ExerciseSummary, PlannedSetDraft, Routine, RoutineExerciseDraft } 
 
 const ROUTINE_SELECT =
   'id, name, created_at, updated_at, ' +
-  'routine_exercises(id, position, exercise_id, exercises(name), ' +
-  'routine_planned_sets(id, position, target_reps, target_weight))'
+  'routine_exercises(id, position, exercise_id, note, rest_timer_seconds, exercises(name), ' +
+  'routine_planned_sets(id, position, target_reps, target_weight, set_type))'
 
 interface PlannedSetRow {
   id: string
   position: number
   target_reps: number | null
   target_weight: number | null
+  set_type: SetType
 }
 
 interface RoutineExerciseRow {
   id: string
   position: number
   exercise_id: string
+  note: string | null
+  rest_timer_seconds: number | null
   // A single embedded-to-one relationship comes back as an object; supabase-js's generic typing
   // can't express that without generated types (none exist for this project yet), so this is
   // asserted at the mapping boundary below, not left as `any`.
@@ -52,6 +55,8 @@ export function mapRoutineRow(row: RoutineRow): Routine {
         exerciseId: re.exercise_id,
         exerciseName: re.exercises?.name ?? 'Unknown exercise',
         position: re.position,
+        note: re.note,
+        restTimerSeconds: re.rest_timer_seconds,
         plannedSets: [...re.routine_planned_sets]
           .sort((a, b) => a.position - b.position)
           .map((s) => ({
@@ -59,6 +64,7 @@ export function mapRoutineRow(row: RoutineRow): Routine {
             position: s.position,
             targetReps: s.target_reps,
             targetWeight: s.target_weight,
+            setType: s.set_type,
           })),
       })),
   }
@@ -91,13 +97,18 @@ export async function deleteRoutine(id: string): Promise<void> {
 // a live network call.
 export function toSaveRoutinePayload(exercises: RoutineExerciseDraft[]): {
   exerciseId: string
-  plannedSets: { targetReps: number | null; targetWeight: number | null }[]
+  note: string | null
+  restTimerSeconds: number | null
+  plannedSets: { targetReps: number | null; targetWeight: number | null; setType: SetType }[]
 }[] {
   return exercises.map((exercise) => ({
     exerciseId: exercise.exerciseId,
+    note: exercise.note,
+    restTimerSeconds: exercise.restTimerSeconds,
     plannedSets: exercise.plannedSets.map((set: PlannedSetDraft) => ({
       targetReps: set.targetReps,
       targetWeight: set.targetWeight,
+      setType: set.setType,
     })),
   }))
 }
@@ -118,6 +129,32 @@ export async function saveRoutine(
   })
   if (error) throw error
   return data as string
+}
+
+// Converts an already-fetched Routine's read shape (real row ids/positions) into the editor's draft
+// shape (RoutineEditorPage.tsx's own local-edit state, also what duplicateRoutine below feeds into
+// saveRoutine). Reusing the original routine_exercise/planned_set ids as draft ids is safe: they're
+// local-only React-list-identity values here, never sent to the server — toSaveRoutinePayload
+// strips them before the RPC call, same as a freshly-generated crypto.randomUUID() would be.
+export function toRoutineExerciseDrafts(exercises: RoutineExercise[]): RoutineExerciseDraft[] {
+  return exercises.map((e) => ({
+    id: e.id,
+    exerciseId: e.exerciseId,
+    exerciseName: e.exerciseName,
+    note: e.note,
+    restTimerSeconds: e.restTimerSeconds,
+    plannedSets: e.plannedSets.map((s) => ({ id: s.id, targetReps: s.targetReps, targetWeight: s.targetWeight, setType: s.setType })),
+  }))
+}
+
+// A real, independent copy — not a reference. Goes through the exact same save_routine(routineId:
+// null, ...) path a brand-new Create Routine save does, so the result is a fully separate row from
+// the moment it's created: editing/deleting the original afterward never touches the duplicate, and
+// vice versa (the same "copy, not live reference" invariant already established for
+// copy_routine_to_program_session). No new RPC or migration needed — duplicating is just "create a
+// routine whose starting content happens to match an existing one."
+export async function duplicateRoutine(routine: Routine): Promise<string> {
+  return saveRoutine(null, `${routine.name} (copy)`, toRoutineExerciseDrafts(routine.exercises))
 }
 
 const EXERCISE_SELECT = 'id, name, owner_id, exercise_type, equipment'

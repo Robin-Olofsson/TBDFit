@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import { PROTOTYPE_HISTORY, PROTOTYPE_PROGRESS_STATS } from '../data/prototypeData'
 import StatCard from '../components/StatCard'
 
@@ -19,7 +20,7 @@ export default function HistoryPage() {
       <div className="page-header">
         <div>
           <h1>History</h1>
-          <p className="page-subtitle">Prototype content — no completed-workout replication exists yet.</p>
+          <p className="page-subtitle">Your training history.</p>
         </div>
       </div>
 
@@ -44,7 +45,9 @@ export default function HistoryPage() {
               <td>{entry.title}</td>
               <td>{entry.summary}</td>
               <td>{entry.dateLabel}</td>
-              <td className="data-row-action">Open →</td>
+              <td className="data-row-action">
+                Open <ChevronRight size={14} aria-hidden="true" />
+              </td>
             </tr>
           ))}
         </tbody>

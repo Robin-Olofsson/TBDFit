@@ -30,16 +30,22 @@ import { queryKeys } from '../queryKeys'
 // the row. It starts out equal to username (both set together at profile-creation time — see
 // profileCreation.ts) and is independently editable later; any presentation fallback (e.g. username,
 // then email) is the caller's decision, made at render time.
-export function useOwnProfile(): { username: string | null; displayName: string | null; loading: boolean; isError: boolean } {
+//
+// bio (supabase/migrations/20260918120000_add_profile_bio.sql) is read here alongside
+// username/display_name for the same reason: one row, one query. It is nullable (`null` = no bio
+// configured, not an error/loading state) and read-only from this hook — there is no bio-write path
+// in Web yet (no Edit Profile UI exists this slice; see get_my_profile_summary()'s own migration
+// comment). Existing callers destructuring only `{ username, displayName }` are unaffected.
+export function useOwnProfile(): { username: string | null; displayName: string | null; bio: string | null; loading: boolean; isError: boolean } {
   const { phase, session } = useAuth()
   const userId = session?.user.id
 
   const query = useQuery({
     queryKey: queryKeys.profile.detail(userId ?? 'unknown'),
     queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('username, display_name').maybeSingle()
+      const { data, error } = await supabase.from('profiles').select('username, display_name, bio').maybeSingle()
       if (error) throw error
-      return data ? { username: data.username, displayName: data.display_name } : null
+      return data ? { username: data.username, displayName: data.display_name, bio: data.bio } : null
     },
     enabled: phase === 'SIGNED_IN' && !!userId,
   })
@@ -47,6 +53,7 @@ export function useOwnProfile(): { username: string | null; displayName: string 
   return {
     username: query.data?.username ?? null,
     displayName: query.data?.displayName ?? null,
+    bio: query.data?.bio ?? null,
     loading: query.isLoading,
     isError: query.isError,
   }

@@ -18,6 +18,12 @@
 export type ExerciseType = 'WEIGHT_REPS' | 'BODYWEIGHT_REPS'
 export type Equipment = 'BARBELL' | 'DUMBBELL' | 'MACHINE' | 'CABLE' | 'BODYWEIGHT' | 'KETTLEBELL' | 'BAND' | 'OTHER'
 
+// A planned set's classification — see
+// supabase/migrations/20260915120000_add_planned_set_type.sql. Unlike ExerciseType/Equipment (which
+// can be null for a pre-metadata row), every set genuinely has one of these four values — the
+// database column is NOT NULL with a 'NORMAL' default, never null here.
+export type SetType = 'NORMAL' | 'WARMUP' | 'FAILURE' | 'DROPSET'
+
 export interface ExerciseSummary {
   id: string
   name: string
@@ -31,6 +37,7 @@ export interface ExerciseSummary {
 export interface PlannedSet {
   id: string
   position: number
+  setType: SetType
   targetReps: number | null
   targetWeight: number | null
 }
@@ -41,6 +48,13 @@ export interface RoutineExercise {
   exerciseName: string
   position: number
   plannedSets: PlannedSet[]
+  /** Pinned to this routine-exercise slot, not the exercise definition — see
+   * supabase/migrations/20260914120000_add_routine_exercise_note_and_rest_timer.sql. Null is the
+   * normal, common case (most exercises carry no note), never a signal of an incomplete record. */
+  note: string | null
+  /** Seconds. Null means "Off" (no rest timer configured) — same blank-means-null convention as
+   * PlannedSet's targetReps/targetWeight, never coerced to 0. */
+  restTimerSeconds: number | null
 }
 
 export interface Routine {
@@ -58,6 +72,7 @@ export interface PlannedSetDraft {
   id: string
   targetReps: number | null
   targetWeight: number | null
+  setType: SetType
 }
 
 export interface RoutineExerciseDraft {
@@ -65,6 +80,8 @@ export interface RoutineExerciseDraft {
   exerciseId: string
   exerciseName: string
   plannedSets: PlannedSetDraft[]
+  note: string | null
+  restTimerSeconds: number | null
 }
 
 export interface HistoryEntry {

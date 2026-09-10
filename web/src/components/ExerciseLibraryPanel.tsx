@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext'
 import { queryKeys } from '../queryKeys'
 import { EQUIPMENT_OPTIONS, EXERCISE_TYPE_OPTIONS, equipmentLabel, exerciseTypeLabel } from '../lib/exerciseLabels'
 import Modal from './Modal'
+import SelectField from './SelectField'
 import type { Equipment, ExerciseSummary, ExerciseType } from '../types'
 
 // A persistent (always-visible, never toggled) exercise picker — see the design reference at the
@@ -110,36 +111,24 @@ export default function ExerciseLibraryPanel({ onSelect }: Props) {
             <label className="field-label" htmlFor="new-exercise-type">
               Exercise Type
             </label>
-            <select
+            <SelectField
               id="new-exercise-type"
-              className="table-input modal-field-input"
               value={newExerciseType}
-              onChange={(e) => setNewExerciseType(e.target.value as ExerciseType)}
-            >
-              {EXERCISE_TYPE_OPTIONS.map((type) => (
-                <option key={type} value={type}>
-                  {exerciseTypeLabel(type)}
-                </option>
-              ))}
-            </select>
+              options={EXERCISE_TYPE_OPTIONS.map((type) => ({ value: type, label: exerciseTypeLabel(type) }))}
+              onChange={setNewExerciseType}
+            />
           </div>
 
           <div>
             <label className="field-label" htmlFor="new-exercise-equipment">
               Equipment
             </label>
-            <select
+            <SelectField
               id="new-exercise-equipment"
-              className="table-input modal-field-input"
               value={newEquipment}
-              onChange={(e) => setNewEquipment(e.target.value as Equipment)}
-            >
-              {EQUIPMENT_OPTIONS.map((equipment) => (
-                <option key={equipment} value={equipment}>
-                  {equipmentLabel(equipment)}
-                </option>
-              ))}
-            </select>
+              options={EQUIPMENT_OPTIONS.map((equipment) => ({ value: equipment, label: equipmentLabel(equipment) }))}
+              onChange={setNewEquipment}
+            />
           </div>
 
           <div className="modal-actions">
@@ -169,26 +158,21 @@ export default function ExerciseLibraryPanel({ onSelect }: Props) {
       </div>
 
       <div className="exercise-library-filters">
-        <select className="table-input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ExerciseType | typeof ANY)}>
-          <option value={ANY}>All Types</option>
-          {EXERCISE_TYPE_OPTIONS.map((type) => (
-            <option key={type} value={type}>
-              {exerciseTypeLabel(type)}
-            </option>
-          ))}
-        </select>
-        <select
-          className="table-input"
+        <SelectField
+          ariaLabel="Filter by exercise type"
+          value={typeFilter}
+          options={[{ value: ANY, label: 'All Types' }, ...EXERCISE_TYPE_OPTIONS.map((type) => ({ value: type, label: exerciseTypeLabel(type) }))]}
+          onChange={setTypeFilter}
+        />
+        <SelectField
+          ariaLabel="Filter by equipment"
           value={equipmentFilter}
-          onChange={(e) => setEquipmentFilter(e.target.value as Equipment | typeof ANY)}
-        >
-          <option value={ANY}>All Equipment</option>
-          {EQUIPMENT_OPTIONS.map((equipment) => (
-            <option key={equipment} value={equipment}>
-              {equipmentLabel(equipment)}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: ANY, label: 'All Equipment' },
+            ...EQUIPMENT_OPTIONS.map((equipment) => ({ value: equipment, label: equipmentLabel(equipment) })),
+          ]}
+          onChange={setEquipmentFilter}
+        />
       </div>
 
       <div className="exercise-library-list">

@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
-import { getRoutine, saveRoutine } from '../data/routines'
+import { getRoutine, saveRoutine, toRoutineExerciseDrafts } from '../data/routines'
 import { useAuth } from '../auth/AuthContext'
 import { queryKeys } from '../queryKeys'
 import PlannedExercisesEditor from '../components/PlannedExercisesEditor'
 import ExerciseLibraryPanel from '../components/ExerciseLibraryPanel'
 import { buildRoutineExerciseDraft } from '../lib/plannedExerciseDrafts'
+import { notifyRoutineSaved } from '../lib/toast'
 import type { RoutineExerciseDraft } from '../types'
 
 // REAL Create/Edit Routine. Local component state holds the full draft (name + exercises + planned
@@ -46,14 +47,7 @@ export default function RoutineEditorPage() {
   // useEffect, which would otherwise cause an extra render pass for no benefit here.
   if (isEditing && !seeded && existingRoutine) {
     setName(existingRoutine.name)
-    setExercises(
-      existingRoutine.exercises.map((e) => ({
-        id: e.id,
-        exerciseId: e.exerciseId,
-        exerciseName: e.exerciseName,
-        plannedSets: e.plannedSets.map((s) => ({ id: s.id, targetReps: s.targetReps, targetWeight: s.targetWeight })),
-      })),
-    )
+    setExercises(toRoutineExerciseDrafts(existingRoutine.exercises))
     setSeeded(true)
   }
 
@@ -65,18 +59,33 @@ export default function RoutineEditorPage() {
       // refetches the real persisted content.
       queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(userId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.routines.detail(userId, savedId) })
-      navigate(`/plan/${savedId}`)
+      // Creating a routine returns to the Routine list (developer feedback: landing on the
+      // brand-new routine's own detail page after Create felt like an extra, unwanted stop).
+      // Editing an existing routine still returns to that routine's detail page, since that's the
+      // page the user was already looking at before choosing Edit.
+      navigate(isEditing ? `/plan/${savedId}` : '/plan')
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Failed to save routine.'),
   })
 
   const handleSave = () => {
+    // The Save button is already disabled while saveMutation.isPending (see below), which is the
+    // real click-level guard — this re-check is belt-and-suspenders against any programmatic
+    // double-invocation, so a second call here can never queue a second save RPC or a second toast.
+    if (saveMutation.isPending) return
     if (!name.trim()) {
       setError('Routine name must not be empty.')
       return
     }
     setError(null)
-    saveMutation.mutate()
+    // mutateAsync (not mutate) so this promise can drive the toast's loading/success/error states
+    // directly from the real RPC outcome — onSuccess/onError above still fire exactly as before
+    // (cache invalidation, navigation, the inline form-error message); this is purely an additional
+    // consumer of the same mutation, not a replacement for its existing side effects. The trailing
+    // catch is required only because handing this promise to a toast is a second consumer of it —
+    // onError above already handles the real error for the inline message; this just prevents an
+    // unhandled-rejection warning from the copy Sonner also awaits.
+    void notifyRoutineSaved(saveMutation.mutateAsync()).catch(() => {})
   }
 
   if (isEditing && (isLoading || !seeded)) {

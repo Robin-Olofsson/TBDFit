@@ -132,9 +132,11 @@ describe('toSaveProgramSessionPayload', () => {
         id: 'local-draft-1',
         exerciseId: 'ex-bench-press',
         exerciseName: 'Bench Press',
+        note: null,
+        restTimerSeconds: null,
         plannedSets: [
-          { id: 'local-set-1', targetReps: 5, targetWeight: 100 },
-          { id: 'local-set-2', targetReps: null, targetWeight: null },
+          { id: 'local-set-1', targetReps: 5, targetWeight: 100, setType: 'NORMAL' },
+          { id: 'local-set-2', targetReps: null, targetWeight: null, setType: 'NORMAL' },
         ],
       },
     ]

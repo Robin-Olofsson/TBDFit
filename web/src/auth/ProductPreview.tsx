@@ -1,3 +1,5 @@
+import { Check } from 'lucide-react'
+
 // PROTOTYPE/PRESENTATION-ONLY hero mockup — hardcoded content, no data fetching, not the real
 // Plan/History/Profile pages (those live in src/pages/). Built as real HTML/CSS, not an embedded
 // screenshot. Deliberately uses the CURRENT real sidebar shape/labels (Plan / History / Profile —
@@ -63,13 +65,13 @@ export default function ProductPreview() {
           <span>1</span>
           <span>80 kg</span>
           <span>8</span>
-          <span>✓</span>
+          <Check size={12} aria-hidden="true" />
         </div>
         <div className="preview-phone-set preview-phone-set-done">
           <span>2</span>
           <span>80 kg</span>
           <span>8</span>
-          <span>✓</span>
+          <Check size={12} aria-hidden="true" />
         </div>
         <div className="preview-phone-set preview-phone-set-active">
           <span>3</span>

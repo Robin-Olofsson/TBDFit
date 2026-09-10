@@ -21,11 +21,11 @@ verifying it, and verifying it is not the same as the team accepting it.**
 
 | Client | Implementation | Verification |
 | --- | --- | --- |
-| **Android Phone** | Real: Supabase auth (email/password + Google), account-scoped local workout persistence (start/attach exercise/log sets/edit/delete), plus a prototype navigation shell layered on top (see below) | Robolectric unit/Room tests only — no physical device/emulator run in this environment |
+| **Android Phone** | Real: Supabase auth (email/password + Google), account-scoped local workout persistence (start/attach exercise/log sets/edit/delete), a real standalone Routine domain (Room, `Routine → Start → Workout`), plus a prototype navigation shell layered on top for the rest (see below) | Robolectric unit/Room tests only — no physical device/emulator run in this environment |
 | **Wear OS** | Foundation scaffold + a real (tested) phone↔watch record-replication mechanism; **no workout-domain code yet** | Unit-tested; no paired device/emulator run performed |
-| **Web** | Real Supabase auth (`/login`, session restore, logout) on a UX prototype shell (Routine/History/Profile/Home) with representative, non-persisted content | Build/lint/type-check/unit tests pass; no real-browser or live-Supabase manual verification performed in this environment |
+| **Web** | Real Supabase auth (`/login`, session restore, logout); real Routine and Program planning (RLS-isolated); a real, optional Profile (`/profile`) — identity/bio, Follow-graph counts, Statistics (Movement steps chart, Workout streak), and a Calendar (schedule/reschedule/unschedule a Routine or ProgramSession, exact time + IANA timezone, completed-Workout correlation via `origin_scheduled_session_id`) — layered on a prototype shell for Home/History/settings content (see below); Web reads completed Workout history but never executes a Workout | Build/lint/type-check/unit tests pass; no real-browser or live-Supabase manual verification performed in this environment |
 | **Apple (iPhone/Watch)** | Not yet scaffolded | N/A |
-| **Supabase** | Backend platform (Accepted, [ADR-004](docs/architecture/adr/0004-initial-backend-platform-and-migration-strategy.md)); auth + two schema areas migrated | Used by both Android and Web against the same project |
+| **Supabase** | Backend platform (Accepted, [ADR-004](docs/architecture/adr/0004-initial-backend-platform-and-migration-strategy.md)); auth, profiles (username + display name + bio), follows (social graph), Routine, Program, Exercise metadata, completed Workout History (`workouts`/`workout_exercises`/`workout_sets`, idempotent `record_completed_workout` RPC), daily Movement (`daily_activity`, steps/day), Scheduling (`scheduled_sessions`), and RLS-hardening schema areas migrated (see `supabase/migrations/`) | Used by both Android and Web against the same project |
 
 ## Product direction
 
@@ -176,13 +176,13 @@ backend/domain work. See
 classification of every current screen on Phone and Web. Summary:
 
 - **Real / production-backed:** Supabase auth (both clients), session restore, logout, Android's
-  local workout execution and ownership model.
+  local workout execution and ownership model, Android's Routine domain (Room), Web's Routine and
+  Program domains (Supabase, RLS-isolated), Web's optional Profile creation (`/profile`).
 - **Mixed:** Android's Home tab and Web's Home dashboard (real signed-in identity next to
   representative content); Profile screens on both clients (real identity, prototype
   settings/stats).
-- **Prototype-only:** Android's in-shell Routine Library and Workout Summary; Web's Routine
-  Library/Builder, History, and Progress. None of these are backed by a Routine, History, or
-  Progress domain model on any client yet.
+- **Prototype-only:** Android's in-shell Workout Summary; Web's History and Progress. Neither is
+  backed by a History/Progress domain model on any client yet.
 
 ## Verification status
 

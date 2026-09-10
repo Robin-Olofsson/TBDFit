@@ -67,12 +67,12 @@ example list.
 | Home (dashboard) | MIXED | Real greeting identity (display name, else username, else email — see "Shared username + display name" in supabase-setup-and-verification.md); Start Workout button and stat cards are still representative prototype content, but "Your Routines" now reads REAL Supabase-backed routines (top 3) — see "Routine Supabase + Web vertical slice" below. "Recent Activity" remains `PROTOTYPE_HISTORY` sample data — History has no backend yet. |
 | Plan (Routine Library) | PRODUCTION-BACKED | Real, per-account list fetched from Supabase (`routines`/`routine_exercises`/`routine_planned_sets`, RLS-isolated) — see "Routine Supabase + Web vertical slice" below. Create/Delete are real. A brand-new account correctly sees a real empty state, not a seeded sample list — the 3 sample routines this table previously described no longer exist anywhere in the production-backed path. |
 | Routine Detail | PRODUCTION-BACKED | Real per-exercise, per-set display fetched from Supabase by id. `Edit Routine`/`Delete` are real. "Start Routine" still shows the same explicit alert explaining execution-on-Web is an open question, not implemented, and not foreclosed — see below (unchanged from before this slice). |
-| Create/Edit Routine (`/plan/new`, `/plan/:routineId/edit`) | PRODUCTION-BACKED | Local draft state (name, exercises, planned sets — add/remove/edit target reps &amp; weight, add exercise via a real exercise picker sourced from Supabase's `exercises` table, inline custom-exercise creation) is held in memory until one Save, which calls the atomic `save_routine` Postgres RPC — see "Routine Supabase + Web vertical slice" below. As of the Program slice, the exercise/set editing UI itself lives in a shared `PlannedExercisesEditor.tsx` component, also used by the Program session editor — see below. |
+| Create/Edit Routine (`/plan/new`, `/plan/:routineId/edit`) | PRODUCTION-BACKED | Local draft state (name, exercises, planned sets — add/remove/edit target reps &amp; weight, a per-set Set Type (Normal/Warm-up/Failure/Drop set), a pinned per-exercise Note, and a Rest Timer preset, add exercise via a real exercise picker sourced from Supabase's `exercises` table, inline custom-exercise creation) is held in memory until one Save, which calls the atomic `save_routine` Postgres RPC — see "Routine Supabase + Web vertical slice" below. As of the Program slice, the exercise/set editing UI itself lives in a shared `PlannedExercisesEditor.tsx` component, also used by the Program session editor — Set Type/Note/Rest Timer render for Routine only, not for Program sessions (see "Per-exercise Note and Rest Timer" and "Per-set Set Type" in supabase-setup-and-verification.md). |
 | Programs (`/programs`) | PRODUCTION-BACKED | New screen — "My Programs" list (name, week count, session count derived from fetched data), Create/Delete — see "Program Supabase + Web vertical slice" below. Reached via its own top-level `Programs` nav item, never nested under Routine. |
 | Program Builder (`/programs/:programId`) | PRODUCTION-BACKED | New screen — three-pane builder (Weeks / Sessions in selected week / session editor). Add Week, Duplicate Week, Add Session (from scratch or **Copy from Routine**), Duplicate handled via the same week-duplication RPC, Delete Week/Session, per-session editing (name, exercises, target reps/weight) via the shared `PlannedExercisesEditor.tsx`. See "Program Supabase + Web vertical slice" below. |
 | History (list) | PROTOTYPE-ONLY | Table + a folded-in Progress stat row (not a separate nav destination — see Progress note below) |
 | Workout Detail | PROTOTYPE-ONLY | Read-only sample workout detail |
-| Profile | MIXED | Real signed-in identity (display name, else username, else email — same `profiles` table Android reads, now including `display_name`; see "Shared username + display name" in supabase-setup-and-verification.md) + real sign-out, both now shown directly on the page (previously only in the shell); the Profile *page* content itself (activity, etc.) remains sample data; a minimal Settings section folded in (per Journey W3), Feed marked "Coming soon". **A signed-in account with no `profiles` row yet sees Profile Setup (`ProfileSetupForm.tsx`) here instead of the identity card** — Username + Display Name, real `INSERT` via `profileCreation.ts` on Save. This is local to `/profile` only, not an application-wide gate: every other route (`/`, `/plan`, `/programs`, ...) works normally with no profile at all — see "Shared username + display name" in supabase-setup-and-verification.md. |
+| Profile | PRODUCTION-BACKED (one flagged temporary exception) | Real signed-in identity (display name, `@username`, bio — `profiles`, including `display_name`/`bio`; see supabase-setup-and-verification.md), real Workouts/Followers/Following counts (`get_my_profile_summary()`), a real Edit Profile dialog (display name + bio; username read-only — no username-change policy exists yet), a real Statistics card (Movement steps chart from `daily_activity`; Workouts tab with a real weekly streak + frequency chart from completed Workout history), and a real Calendar (month navigation, scheduled/completed day markers, selected-day agenda, schedule/reschedule/unschedule a Routine or ProgramSession with exact time + IANA timezone, `origin_scheduled_session_id` correlation) — see supabase-setup-and-verification.md's "Profile UI" section for the full contract. Sign-out lives only in `AccountMenu.tsx` now, not on this page. **One deliberate, clearly-labeled temporary exception**: because no real Movement ingestion source (Phone/Watch) exists yet, the Movement chart shows a generated preview dataset — visibly marked "Preview data — no real Movement data yet" — whenever the real `daily_activity` query returns zero rows; see `ProfileStatistics.tsx`'s own `buildFakeMovementPreview` comment for exactly what to delete once real Movement data exists. **A signed-in account with no `profiles` row yet sees Profile Setup (`ProfileSetupForm.tsx`) here instead** — Username + Display Name, real `INSERT` via `profileCreation.ts` on Save. This remains local to `/profile` only, not an application-wide gate: every other route (`/`, `/plan`, `/programs`, ...) works normally with no profile at all. |
 
 ### Auth / session (Web)
 
@@ -465,12 +465,14 @@ e.g. `DURATION` — is a trivial constraint-alteration migration, not an identit
 | Exercise image | NOT IMPLEMENTED | Would require Supabase Storage (bucket, RLS, upload UI) — a materially larger scope than a metadata column, deliberately out of this slice |
 | Duration/distance Workout execution | NOT IMPLEMENTED | No client has any such execution model |
 
-The 6 existing built-in exercises (matched by their canonical `builtin_*` id, never by name-guessing)
-were assigned real metadata: `builtin_bench_press`/`builtin_back_squat`/`builtin_deadlift`/
-`builtin_overhead_press`/`builtin_barbell_row` → `WEIGHT_REPS` + `BARBELL`; `builtin_pull_up` →
-`BODYWEIGHT_REPS` + `BODYWEIGHT` (the one documented judgment call — see the migration's own comment
-for why a weighted-pull-up variant is left as a user's own custom exercise rather than modeled as an
-optionally-weighted built-in property). Existing custom exercises (created before this migration)
+The (then-)6 existing built-in exercises (matched by their canonical `builtin_*` id, never by
+name-guessing) were assigned real metadata: `builtin_bench_press`/`builtin_back_squat`/
+`builtin_deadlift`/`builtin_overhead_press`/`builtin_barbell_row` → `WEIGHT_REPS` + `BARBELL`;
+`builtin_pull_up` → `BODYWEIGHT_REPS` + `BODYWEIGHT` (the one documented judgment call — see the
+migration's own comment for why a weighted-pull-up variant is left as a user's own custom exercise
+rather than modeled as an optionally-weighted built-in property). The catalog was later expanded to
+30 — see "Built-in exercise catalog (V1 expansion)" below. Existing custom exercises (created before
+this migration)
 get `NULL` for both fields — never a guessed default — surfaced as "Unspecified" in the UI via
 `web/src/lib/exerciseLabels.ts`'s centralized label mapping, not a raw database code.
 
@@ -496,6 +498,31 @@ slice) — run `npx supabase db push --dry-run` then `npx supabase db push` to a
 `20260911180000_add_exercise_metadata.sql` (the fourth of four migrations, after `create_routines`,
 `normalize_exercise_identity`, and `create_programs`).
 
+### Built-in exercise catalog (V1 expansion)
+
+[`supabase/migrations/20260916120000_expand_builtin_exercise_catalog.sql`](../../supabase/migrations/20260916120000_expand_builtin_exercise_catalog.sql)
+expands the built-in catalog from 6 to **30** — a curated, general-purpose V1 starting library
+(Push/Pull/Legs, Upper/Lower, general strength/hypertrophy), **not a complete exercise universe**.
+Custom exercises remain the answer for specialized variants (grip/angle/cable-height, etc.) — the
+built-in list deliberately stays broad and canonical rather than exploding into near-duplicates
+(one Lat Pulldown, not four grip variants). The original six ids/names/metadata are completely
+untouched (immutable product contract — existing Routine/Program data may already reference them).
+Every new row: `owner_id = NULL`, a real `exercise_type`/`equipment` (never left `NULL` the way a
+pre-metadata custom row can be), and the exact same canonical `builtin_*` id on both Supabase and
+Android's `BuiltInExerciseCatalog.kt` (Android has no `exercise_type`/`equipment` field to mirror —
+that dimension remains Web+Supabase only, unchanged by this slice). Web needed no code change at
+all: `ExerciseLibraryPanel.tsx` already sources its list entirely from Supabase
+(`listVisibleExercises()`, already `order('name')`) with generic Type/Equipment/search filtering, so
+the expanded catalog surfaces automatically. Verified against a disposable local Postgres 16
+instance (full 11-migration chain from zero, not seeded manually): exactly 30 built-ins, no
+duplicate ids, every row has non-null `exercise_type`/`equipment`, the original six retain their
+exact ids/metadata, a newly-added built-in (`builtin_romanian_deadlift`) round-trips through
+`save_routine` and `copy_routine_to_program_session` referencing only `exercise_id`, and the full
+RLS adversarial suite (cross-account isolation, anon denial) still holds. Android:
+`BuiltInExerciseCatalogTest.kt` gained a drift-detection test asserting `BUILT_IN_EXERCISE_SEED`
+matches a separately hand-typed 30-entry literal (`:phone:testDebugUnitTest` — BUILD SUCCESSFUL).
+**Not applied to any live project by this change.**
+
 ### Web server-state cache
 
 All real Web reads (Routine list/detail, Program list/detail, the Exercise catalog, the signed-in
@@ -516,7 +543,7 @@ Scoping section for why both layers exist.
 ## Cross-client design language
 
 Web and Phone share conceptual vocabulary (Workout / Routine / Exercise / History / Progress / Profile)
-and the same sample data concepts (Push/Pull/Leg Day routines, the same 6 built-in exercise names) so a
+and the same sample data concepts (Push/Pull/Leg Day routines, the same built-in exercise catalog) so a
 reviewer comparing both side by side recognizes the same product — per ADR-005's "same product model,
 specialized device responsibilities, no forced feature parity." Navigation, density, and interaction
 patterns deliberately differ: Phone uses bottom-tab navigation sized for one-handed thumb reach; Web

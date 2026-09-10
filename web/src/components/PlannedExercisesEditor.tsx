@@ -4,9 +4,11 @@ import { Dumbbell } from 'lucide-react'
 import { createCustomExercise, listVisibleExercises } from '../data/routines'
 import { useAuth } from '../auth/AuthContext'
 import { queryKeys } from '../queryKeys'
-import { newSetDraft } from '../lib/plannedExerciseDrafts'
+import { SET_TYPE_OPTIONS, buildRoutineExerciseDraft, newSetDraft, setTypeLetter } from '../lib/plannedExerciseDrafts'
+import RestTimerPicker from './RestTimerPicker'
+import SelectField from './SelectField'
 import { EQUIPMENT_OPTIONS, EXERCISE_TYPE_OPTIONS, equipmentLabel, exerciseTypeLabel } from '../lib/exerciseLabels'
-import type { Equipment, ExerciseSummary, ExerciseType, RoutineExerciseDraft } from '../types'
+import type { Equipment, ExerciseSummary, ExerciseType, RoutineExerciseDraft, SetType } from '../types'
 
 // Shared planned-prescription editor: the exercise/set editing UI extracted from
 // RoutineEditorPage.tsx so it can serve BOTH a standalone Routine's editor and a Program's
@@ -25,9 +27,19 @@ interface Props {
   // page's own comment for why a toggled inline picker and an always-visible side panel shouldn't
   // both be shown at once.
   showPicker?: boolean
+  // Default true (Routine's own editor). Program's SessionEditor sets this to false: neither
+  // program_session_exercises nor program_session_planned_sets has a note/rest_timer_seconds/
+  // set_type column at all (see supabase/migrations/20260914120000_add_routine_exercise_note_and_rest_timer.sql
+  // and 20260915120000_add_planned_set_type.sql — both slices were deliberately scoped to Routine
+  // only), and neither field is read by toSaveProgramSessionPayload — showing these controls there
+  // would silently discard whatever the user picked/typed into them, which is worse than not
+  // offering them at all. Covers the Note field, Rest Timer picker, AND the per-set Set Type
+  // selector — all three are Routine-only, not just the first two despite the prop's name predating
+  // Set Type's addition.
+  showNoteAndRestTimer?: boolean
 }
 
-export default function PlannedExercisesEditor({ exercises, onChange, showPicker = true }: Props) {
+export default function PlannedExercisesEditor({ exercises, onChange, showPicker = true, showNoteAndRestTimer = true }: Props) {
   const { session } = useAuth()
   const userId = session?.user.id ?? ''
   const queryClient = useQueryClient()
@@ -61,7 +73,7 @@ export default function PlannedExercisesEditor({ exercises, onChange, showPicker
   const error = queryError instanceof Error ? queryError.message : createExerciseMutation.error instanceof Error ? createExerciseMutation.error.message : null
 
   const addExercise = (exercise: ExerciseSummary) => {
-    onChange([...exercises, { id: crypto.randomUUID(), exerciseId: exercise.id, exerciseName: exercise.name, plannedSets: [newSetDraft()] }])
+    onChange([...exercises, buildRoutineExerciseDraft(exercise)])
     setPickerOpen(false)
   }
 
@@ -81,6 +93,27 @@ export default function PlannedExercisesEditor({ exercises, onChange, showPicker
 
   const removeSet = (exerciseDraftId: string, setId: string) => {
     onChange(exercises.map((e) => (e.id === exerciseDraftId ? { ...e, plannedSets: e.plannedSets.filter((s) => s.id !== setId) } : e)))
+  }
+
+  const updateSetType = (exerciseDraftId: string, setId: string, setType: SetType) => {
+    onChange(
+      exercises.map((e) =>
+        e.id === exerciseDraftId ? { ...e, plannedSets: e.plannedSets.map((s) => (s.id === setId ? { ...s, setType } : s)) } : e,
+      ),
+    )
+  }
+
+  // Blank means "no note" (persisted as null), same convention as updateSetField below — never an
+  // empty-string row value.
+  const updateExerciseNote = (exerciseDraftId: string, rawValue: string) => {
+    onChange(exercises.map((e) => (e.id === exerciseDraftId ? { ...e, note: rawValue.trim() === '' ? null : rawValue } : e)))
+  }
+
+  // Picked from RestTimerPicker's fixed Off/00:05/…/05:00 list — always a definite, already-valid
+  // value (or null for Off), so no parsing/rejection is needed here the way updateSetField's
+  // open-ended number inputs require.
+  const updateExerciseRestTimer = (exerciseDraftId: string, seconds: number | null) => {
+    onChange(exercises.map((e) => (e.id === exerciseDraftId ? { ...e, restTimerSeconds: seconds } : e)))
   }
 
   // Blank means "no target" (persisted as null) — never silently coerced to zero. An unparseable,
@@ -125,27 +158,59 @@ export default function PlannedExercisesEditor({ exercises, onChange, showPicker
               Remove exercise
             </button>
           </div>
+
+          {showNoteAndRestTimer && (
+            <>
+              <div className="routine-editor-exercise-note-field">
+                <label className="field-label" htmlFor={`note-${exercise.id}`}>
+                  Note
+                </label>
+                <textarea
+                  id={`note-${exercise.id}`}
+                  className="table-input modal-field-input"
+                  rows={2}
+                  placeholder="Add pinned note"
+                  defaultValue={exercise.note ?? ''}
+                  onChange={(e) => updateExerciseNote(exercise.id, e.target.value)}
+                />
+              </div>
+
+              <div className="routine-editor-exercise-rest-timer-field">
+                <label className="field-label" htmlFor={`rest-timer-${exercise.id}`}>
+                  Rest Timer
+                </label>
+                <RestTimerPicker
+                  id={`rest-timer-${exercise.id}`}
+                  value={exercise.restTimerSeconds}
+                  onChange={(seconds) => updateExerciseRestTimer(exercise.id, seconds)}
+                />
+              </div>
+            </>
+          )}
+
           <table className="data-table">
             <thead>
               <tr>
-                <th></th>
-                <th>Target reps</th>
+                <th>Set</th>
                 <th>Target weight (kg)</th>
+                <th>Target reps</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {exercise.plannedSets.map((set, index) => (
                 <tr key={set.id}>
-                  <td>Set {index + 1}</td>
                   <td>
-                    <input
-                      className="table-input"
-                      type="number"
-                      min={0}
-                      defaultValue={set.targetReps ?? ''}
-                      onChange={(e) => updateSetField(exercise.id, set.id, 'targetReps', e.target.value)}
-                    />
+                    {showNoteAndRestTimer && (
+                      <SelectField
+                        className="set-type-select"
+                        ariaLabel={`Set ${index + 1} type`}
+                        value={set.setType}
+                        triggerLabel={setTypeLetter(set.setType)}
+                        options={SET_TYPE_OPTIONS.map((option) => ({ value: option.code, label: option.label }))}
+                        onChange={(setType) => updateSetType(exercise.id, set.id, setType)}
+                      />
+                    )}
                   </td>
                   <td>
                     <input
@@ -158,9 +223,20 @@ export default function PlannedExercisesEditor({ exercises, onChange, showPicker
                     />
                   </td>
                   <td>
-                    <button type="button" className="btn-link btn-link-danger" onClick={() => removeSet(exercise.id, set.id)}>
-                      Remove set
-                    </button>
+                    <input
+                      className="table-input"
+                      type="number"
+                      min={0}
+                      defaultValue={set.targetReps ?? ''}
+                      onChange={(e) => updateSetField(exercise.id, set.id, 'targetReps', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    {exercise.plannedSets.length > 1 && (
+                      <button type="button" className="btn-link btn-link-danger" onClick={() => removeSet(exercise.id, set.id)}>
+                        Remove set
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -199,20 +275,18 @@ export default function PlannedExercisesEditor({ exercises, onChange, showPicker
                 value={newExerciseName}
                 onChange={(e) => setNewExerciseName(e.target.value)}
               />
-              <select className="table-input" value={newExerciseType} onChange={(e) => setNewExerciseType(e.target.value as ExerciseType)}>
-                {EXERCISE_TYPE_OPTIONS.map((type) => (
-                  <option key={type} value={type}>
-                    {exerciseTypeLabel(type)}
-                  </option>
-                ))}
-              </select>
-              <select className="table-input" value={newEquipment} onChange={(e) => setNewEquipment(e.target.value as Equipment)}>
-                {EQUIPMENT_OPTIONS.map((equipment) => (
-                  <option key={equipment} value={equipment}>
-                    {equipmentLabel(equipment)}
-                  </option>
-                ))}
-              </select>
+              <SelectField
+                ariaLabel="New exercise type"
+                value={newExerciseType}
+                options={EXERCISE_TYPE_OPTIONS.map((type) => ({ value: type, label: exerciseTypeLabel(type) }))}
+                onChange={setNewExerciseType}
+              />
+              <SelectField
+                ariaLabel="New exercise equipment"
+                value={newEquipment}
+                options={EQUIPMENT_OPTIONS.map((equipment) => ({ value: equipment, label: equipmentLabel(equipment) }))}
+                onChange={setNewEquipment}
+              />
               <button type="button" className="btn-secondary" disabled={createExerciseMutation.isPending} onClick={handleCreateCustomExercise}>
                 + Create &amp; add
               </button>
