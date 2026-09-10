@@ -1,6 +1,6 @@
 # TBDFit
 
-TBDFit is a training platform, not a single app: one product, shared across native/device-specialized
+ToBeDecided Fit is a training platform, not a single app: one product, shared across native/device-specialized
 clients (Android phone, Wear OS, Web today; iPhone/Apple Watch planned), covering the training
 lifecycle — plan, execute, record, review, improve, and eventually share/discover. Clients share a
 product model and a single cross-client identity (one Supabase-authenticated account), not a shared
